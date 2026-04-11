@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+.AppleDouble
+
+# Python
+__pycache__/
+*.py[cod]
+.env
+.venv/
+
+# LaTeX artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+
+# Claude/editor
+.claude/

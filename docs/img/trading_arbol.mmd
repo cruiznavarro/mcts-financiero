@@ -1,0 +1,44 @@
+stateDiagram-v2
+    [*] --> Raiz : State inicial
+
+    Raiz --> Seleccion : iter k
+
+    state "Seleccion UCB1" as Seleccion {
+        [*] --> EvalUCB
+        EvalUCB --> BajarHijo : expandido
+        BajarHijo --> EvalUCB
+        EvalUCB --> [*] : hoja
+    }
+
+    Seleccion --> Expansion
+
+    state "Expansion" as Expansion {
+        [*] --> ElegirNoTried
+        ElegirNoTried --> NuevoState
+        NuevoState --> AddChild
+        AddChild --> [*]
+    }
+
+    Expansion --> Rollout
+
+    state "Rollout GBM x50" as Rollout {
+        [*] --> Calibrar
+        Calibrar --> VectorizarZ
+        VectorizarZ --> SimularST
+        SimularST --> MediaCartera
+        MediaCartera --> [*]
+    }
+
+    Rollout --> Retroprop
+
+    state "Retropropagacion" as Retroprop {
+        [*] --> Update
+        Update --> SubirPadre : padre != None
+        SubirPadre --> Update
+        SubirPadre --> [*]
+    }
+
+    Retroprop --> Raiz : k < K
+    Retroprop --> Decision : k = K
+
+    Decision --> [*] : a* best_child

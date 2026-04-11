@@ -1,0 +1,30 @@
+flowchart TD
+    A([Inicio]) --> B[download_data]
+    B --> C[Backtester]
+
+    subgraph BT [Backtester — t = 0..T-1]
+        C --> D[State inicial]
+        D --> E[MCTS_Agent.run]
+
+        subgraph MCTS [MCTS_Agent — K iter.]
+            E --> F[_select UCB1]
+            F --> G{expandido?}
+            G -- no --> H[_expand]
+            G -- si --> F
+            H --> I[_rollout GBM x50]
+            I --> J[_backpropagate]
+            J --> L{k < K?}
+            L -- si --> F
+            L -- no --> M[best_action]
+        end
+
+        M --> N[apply_action]
+        N --> O[Registrar]
+        O --> D
+    end
+
+    C --> P[buy_and_hold]
+    P --> Q[cumulative_roi]
+    Q --> R[save_chart]
+    R --> S[save_report]
+    S --> Z([Fin])

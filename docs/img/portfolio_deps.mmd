@@ -1,0 +1,27 @@
+graph LR
+    run_backtest --> PortfolioBacktester
+    run_backtest --> enumerate_simplex
+
+    PortfolioBacktester --> MCTS_Portfolio
+    PortfolioBacktester --> compute_metrics
+    PortfolioBacktester --> plot
+    PortfolioBacktester --> save_report
+
+    MCTS_Portfolio --> _calibrate
+    MCTS_Portfolio --> _cholesky_safe
+    MCTS_Portfolio --> _select
+    MCTS_Portfolio --> _expand
+    MCTS_Portfolio --> _rollout
+    MCTS_Portfolio --> _backpropagate
+    MCTS_Portfolio --> run
+    MCTS_Portfolio --> best_weights
+
+    _select --> Node.best_child
+    _select --> Node.can_expand
+    Node.best_child --> Node.ucb1
+    Node.can_expand --> Node.max_children_allowed
+    _expand --> _calibrate
+    _expand --> _cholesky_safe
+    _expand --> State.apply_action
+    _rollout --> _calibrate
+    _rollout --> _cholesky_safe

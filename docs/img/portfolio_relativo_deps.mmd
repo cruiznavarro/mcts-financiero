@@ -1,0 +1,27 @@
+graph LR
+    main --> descargar_precios
+    main --> backtest
+    main --> calcular_metricas
+    main --> graficar
+    main --> guardar_reporte
+
+    backtest --> crear_estado
+    backtest --> ejecutar_mcts
+    backtest --> aplicar_accion
+    backtest --> construir_acciones
+
+    crear_estado --> calcular_momentum
+    crear_estado --> calcular_vol_relativa
+    crear_estado --> calcular_ret_vs_spy
+
+    ejecutar_mcts --> crear_nodo
+    ejecutar_mcts --> seleccionar
+    ejecutar_mcts --> expandir
+    ejecutar_mcts --> rollout
+    ejecutar_mcts --> retropropagar
+
+    rollout --> aplicar_accion
+    rollout --> calibrar_gbm_multi
+    rollout --> cholesky_safe
+
+    seleccionar --> ucb1

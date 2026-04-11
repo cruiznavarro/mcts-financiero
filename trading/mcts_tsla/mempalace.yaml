@@ -1,0 +1,17 @@
+wing: wing_mcts_simple
+rooms:
+- name: mcts-four-steps
+  description: Core MCTS algorithm — 4-step cycle, node structure
+  keywords: [mcts, seleccion, expansion, rollout, backprop, arbol, nodo]
+- name: ucb1-exploration
+  description: UCB1 selection policy, exploration/exploitation balance
+  keywords: [ucb1, ucb, exploration, exploitation, confidence, bound]
+- name: action-space-filter
+  description: Filtering viable actions based on portfolio state
+  keywords: [acciones, viables, filtro, cartera, vender, comprar]
+- name: relative-reward-vs-bah
+  description: Relative reward vs Buy & Hold — reward shaping rationale
+  keywords: [recompensa, relativa, buy, hold, log-retorno, rollout]
+- name: gbm-calibration
+  description: GBM parameter estimation — rolling window, mu, sigma
+  keywords: [gbm, calibrar, mu, sigma, rolling, ventana, log-retorno]

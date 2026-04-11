@@ -1,0 +1,33 @@
+flowchart TD
+    A([Inicio]) --> B["descargar_precios<br>TICKERS, SPY, PERIOD"]
+    B --> C[backtest]
+
+    subgraph BT [Backtest — t = 0..T-1]
+        C --> D["pesos=1/N<br>valor=CAPITAL_INIT"]
+        D --> E{t mod REBAL_FREQ = 0?}
+        E -- si --> F["crear_estado<br>momentum, vol_rel<br>ret_vs_spy"]
+        F --> G["ejecutar_mcts<br>estado, prices, rng"]
+
+        subgraph MCTS [MCTS — K iteraciones]
+            G --> G1["Seleccion UCT<br>max UCB1 hasta hoja"]
+            G1 --> G2{acciones no exploradas?}
+            G2 -- si --> G3["Expansion<br>accion aleatoria"]
+            G2 -- no --> G1
+            G3 --> G4["Rollout GBM<br>N+1 activos<br>reward vs SPY"]
+            G4 --> G5["Retropropagacion<br>w += r, n += 1"]
+            G5 --> G6{k menor que K?}
+            G6 -- si --> G1
+            G6 -- no --> G7[a* = argmax Q/N]
+        end
+
+        G7 --> H["aplicar_accion<br>ROTAR, IGUAL_PESO<br>o MANTENER"]
+        H --> I["coste tx<br>V * turnover * tau"]
+        I --> J["drift pesos reales<br>w = w*(1+ret)/sum"]
+        E -- no --> J
+        J --> D
+    end
+
+    C --> K["calcular_metricas<br>ROI, Sharpe, Sortino<br>MDD, Calmar"]
+    K --> L["graficar<br>4 paneles + conv. UCB"]
+    L --> M[guardar_reporte]
+    M --> Z([Fin])

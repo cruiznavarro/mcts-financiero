@@ -1,0 +1,91 @@
+\documentclass[11pt, a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{parskip}
+\usepackage{microtype}
+\usepackage{hyperref}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=black, citecolor=black}
+
+\title{\textbf{MCTS Aplicado a Activos Financieros}\\[0.4em]
+\large Marco Matemático y Referencias}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\section*{1. Formulación como Proceso de Decisión de Markov}
+
+El problema se modela como un MDP definido por la tupla $(S, A, T, R, \gamma)$:
+
+\begin{itemize}
+  \item \textbf{Estado} $s_t = (P_t,\, C_t,\, H_t)$: precio de cierre del activo, capital líquido disponible y acciones en cartera en el instante $t$.
+  \item \textbf{Acciones} $a_t \in \{-k\%,\, 0,\, +k\%\}$: vender, mantener o comprar un porcentaje $k$ del capital.
+  \item \textbf{Recompensa} $R_t = \ln\!\left(\dfrac{V_t}{V_{t-1}}\right)$, donde el valor total del portafolio es $V_t = C_t + H_t \cdot P_t$.
+\end{itemize}
+
+\section*{2. Selección — Política UCT}
+
+Cada nodo del árbol de decisión se trata como una instancia del problema del bandido multi-brazo. La política \textbf{UCT} (\emph{Upper Confidence Bounds for Trees}) selecciona la acción que maximiza:
+
+\[
+  a^* = \arg\max_{a} \left[ Q(s,a) + c\,\sqrt{\frac{\ln N(s)}{n(s,a)}} \right]
+\]
+
+donde $Q(s,a)$ es la recompensa media observada (\textbf{explotación}), el segundo término incentiva la \textbf{exploración} de acciones poco visitadas, $N(s)$ es el número total de visitas al nodo padre, $n(s,a)$ el número de visitas a la acción $a$ desde $s$, y $c$ la constante de exploración.
+
+El algoritmo \textbf{UCB1} subyacente garantiza un arrepentimiento (\emph{regret}) de orden $O(\log n)$, óptimo para el problema de bandido.
+
+\section*{3. Simulación (Rollout) con Movimiento Browniano Geométrico}
+
+En lugar de una política de rollout aleatoria, la trayectoria futura del precio se simula mediante el \textbf{GBM}:
+
+\[
+  P_{t+1} = P_t \cdot \exp\!\left[\left(\mu - \frac{\sigma^2}{2}\right)\Delta t + \sigma\sqrt{\Delta t}\, Z\right], \quad Z \sim \mathcal{N}(0,1)
+\]
+
+Para el activo de referencia (TSLA): $\mu \approx 0{,}03\%$ diario y $\sigma \approx 1{,}8\%$ diario, estimados con datos históricos.
+
+\section*{4. Convergencia Teórica}
+
+\textbf{Teorema de convergencia de UCT} (Kocsis \& Szepesvári, 2006): cuando el número de iteraciones tiende a infinito, la probabilidad de seleccionar una acción subóptima en la raíz tiende a cero.
+
+\textbf{Hipótesis y advertencias críticas:}
+
+\begin{itemize}
+  \item \textbf{H2 — Recompensas acotadas:} las garantías teóricas exigen $R_t \in [0,1]$. Es necesario \emph{normalizar} los retornos logarítmicos a ese intervalo para aplicar las cotas de Hoeffding.
+  \item \textbf{H8 — Varianza finita:} necesaria para que la ley de los grandes números opere al promediar rollouts. Las colas pesadas del mercado ralentizan la convergencia; la solución propuesta es sustituir el GBM por una \emph{red neuronal} entrenada con datos históricos (arquitectura AlphaZero).
+\end{itemize}
+
+\section*{5. Referencias Clave}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{p{3.5cm} p{10cm}}
+  \toprule
+  \textbf{Categoría} & \textbf{Referencia} \\
+  \midrule
+  Fundamentos UCB & Auer, P. et al.\ (2002). \emph{Finite-time analysis of the multiarmed bandit problem}. \\
+  Cota inferior óptima & Lai, T.\ L.\ \& Robbins, H.\ (1985). \\
+  Exploración-explotación & Lilian Weng, \emph{The Multi-Armed Bandit Problem} (blog). \\
+  \textbf{Texto fundacional UCT} & \textbf{Kocsis, L.\ \& Szepesvári, C.\ (2006).} \emph{Bandit based Monte-Carlo Planning}. \\
+  Survey completo & Browne, C.\ et al.\ (2012). \emph{A Survey of Monte Carlo Tree Search Methods}. \\
+  AlphaGo / AlphaZero & Silver, D.\ et al.\ (2016, 2018). Artículos en \emph{Nature} y \emph{Science}. \\
+  Implementación práctica & Int8, \emph{Beginner's Guide to MCTS} (guía Python). \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{1em}
+El texto fundacional indispensable es \textbf{Kocsis \& Szepesvári (2006)}, que establece UCT y su teorema de convergencia. La extensión natural hacia AlphaZero (Silver et al.) es relevante si se reemplazan los rollouts GBM por una función de valor aprendida.
+
+\end{document}

@@ -1,0 +1,34 @@
+graph LR
+    main --> backtest
+    backtest --> descargar_precios
+    backtest --> crear_estado
+    backtest --> ejecutar_mcts
+    backtest --> calcular_metricas
+    backtest --> graficar
+    backtest --> graficar_convergencia_ucb
+    backtest --> graficar_violin_retornos
+
+    crear_estado --> calcular_rsi
+    crear_estado --> calcular_ma
+
+    ejecutar_mcts --> acciones_viables
+    ejecutar_mcts --> crear_nodo
+    ejecutar_mcts --> seleccionar
+    ejecutar_mcts --> expandir
+    ejecutar_mcts --> estado_en_nodo
+    ejecutar_mcts --> rollout
+    ejecutar_mcts --> retropropagar
+
+    seleccionar --> ucb1
+    seleccionar --> acciones_no_exploradas
+
+    expandir --> acciones_no_exploradas
+    expandir --> crear_nodo
+
+    estado_en_nodo --> calibrar_gbm
+    estado_en_nodo --> simular_precio_futuro
+    estado_en_nodo --> aplicar_accion
+
+    rollout --> calibrar_gbm
+    rollout --> aplicar_accion
+    rollout --> valor_portafolio

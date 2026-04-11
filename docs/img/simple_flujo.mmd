@@ -1,0 +1,31 @@
+flowchart TD
+    A([Inicio]) --> B[descargar_precios]
+    B --> C[backtest]
+
+    subgraph BT [Backtest — t = 0..T-1]
+        C --> D[crear_estado]
+        D --> E[ejecutar_mcts]
+
+        subgraph MCTS [MCTS — K iteraciones]
+            E --> F[Seleccion UCT]
+            F --> G{no exploradas?}
+            G -- si --> H[Expansion]
+            G -- no --> F
+            H --> I[estado_en_nodo]
+            I --> J[Rollout GBM]
+            J --> K[Retroprop.]
+            K --> L{k < K?}
+            L -- si --> F
+            L -- no --> M[a* = argmax Q/N]
+        end
+
+        M --> N[aplicar_accion]
+        N --> O[registrar]
+        O --> D
+    end
+
+    C --> P[calcular_metricas]
+    P --> Q[graficar]
+    Q --> R[conv. UCB]
+    R --> S[violin retornos]
+    S --> Z([Fin])

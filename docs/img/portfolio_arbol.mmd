@@ -1,0 +1,44 @@
+stateDiagram-v2
+    [*] --> Raiz : weights=1/N
+
+    Raiz --> Seleccion : iter k
+
+    state "Seleccion UCB1+PW" as Seleccion {
+        [*] --> CheckPW
+        CheckPW --> BajarHijo : no expandir
+        BajarHijo --> CheckPW
+        CheckPW --> [*] : expandir
+    }
+
+    Seleccion --> Expansion
+
+    state "Expansion" as Expansion {
+        [*] --> ElegirAccion
+        ElegirAccion --> SimularPaso
+        SimularPaso --> NuevoState
+        NuevoState --> [*]
+    }
+
+    Expansion --> Rollout
+
+    state "Rollout GBM Multivariado" as Rollout {
+        [*] --> Calibrar
+        Calibrar --> Cholesky
+        Cholesky --> Simular
+        Simular --> RetornoCartera
+        RetornoCartera --> [*]
+    }
+
+    Rollout --> Retroprop
+
+    state "Retropropagacion" as Retroprop {
+        [*] --> Update
+        Update --> Subir : padre != None
+        Subir --> Update
+        Subir --> [*]
+    }
+
+    Retroprop --> Raiz : k < K
+    Retroprop --> Decision : k = K
+
+    Decision --> [*] : best_weights

@@ -1,0 +1,32 @@
+flowchart TD
+    A([Inicio]) --> B[run_backtest.py]
+    B --> C[yf.download]
+    C --> D[enumerate_simplex]
+    D --> E[PortfolioBacktester]
+
+    subgraph BT [PortfolioBacktester — t = 0..T-1]
+        E --> F[State day=0]
+        F --> G[MCTS_Portfolio.run]
+
+        subgraph MCTS [MCTS_Portfolio — K iter.]
+            G --> G1[_select UCB1+PW]
+            G1 --> G2{can_expand?}
+            G2 -- si --> G3[_expand]
+            G2 -- no --> G1
+            G3 --> G4[_rollout GBM x50]
+            G4 --> G5[_backpropagate]
+            G5 --> G6{k < K?}
+            G6 -- si --> G1
+            G6 -- no --> G7[best_weights]
+        end
+
+        G7 --> H[apply_action]
+        H --> I[Registrar]
+        I --> F
+    end
+
+    E --> J[Benchmarks]
+    J --> K[compute_metrics]
+    K --> L[plot PNG]
+    L --> M[save_report]
+    M --> Z([Fin])

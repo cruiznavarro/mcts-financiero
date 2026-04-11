@@ -1,0 +1,29 @@
+graph LR
+    main --> Backtester
+    Backtester --> download_data
+    Backtester --> MCTS_Agent
+    Backtester --> buy_and_hold
+    Backtester --> cumulative_roi
+    Backtester --> sharpe_ratio
+    Backtester --> save_chart
+    Backtester --> save_report
+
+    MCTS_Agent --> _select
+    MCTS_Agent --> _expand
+    MCTS_Agent --> _rollout
+    MCTS_Agent --> _backpropagate
+    MCTS_Agent --> run
+    MCTS_Agent --> best_action
+
+    _select --> Node.best_child
+    _select --> Node.is_fully_expanded
+    Node.best_child --> Node.ucb1
+    _expand --> Node.untried_actions
+    _expand --> Node.add_child
+    _expand --> State.apply_action
+    _rollout --> State
+    _backpropagate --> Node
+    run --> _select
+    run --> _expand
+    run --> _rollout
+    run --> _backpropagate

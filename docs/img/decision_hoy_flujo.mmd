@@ -1,0 +1,31 @@
+flowchart TD
+    A([Inicio]) --> B[Configurar cartera]
+    B --> C[decision_hoy]
+
+    subgraph DH [decision_hoy]
+        C --> D[descargar_precios]
+        D --> E[crear_estado s0]
+        E --> F[Imprimir estado]
+        F --> G[ejecutar_mcts]
+
+        subgraph MCTS [MCTS — K iteraciones]
+            G --> G1[Seleccion UCT]
+            G1 --> G2{no exploradas?}
+            G2 -- si --> G3[Expansion]
+            G2 -- no --> G1
+            G3 --> G4[Rollout GBM]
+            G4 --> G5[Retroprop.]
+            G5 --> G6{k < K?}
+            G6 -- si --> G1
+            G6 -- no --> G7[a* = argmax Q/N]
+        end
+
+        G7 --> H[Calcular ranking]
+        H --> I[Imprimir tabla]
+        I --> J[interpretar_accion]
+        J --> K[conv. UCB]
+        K --> L[graficar_ranking]
+        L --> M[Abrir imagenes]
+    end
+
+    M --> Z([Fin])

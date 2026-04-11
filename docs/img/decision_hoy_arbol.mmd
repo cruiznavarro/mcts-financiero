@@ -1,0 +1,65 @@
+stateDiagram-v2
+    direction TB
+
+    [*] --> RaizReal : s0 cartera real
+
+    state "Raiz s0" as RaizReal
+
+    RaizReal --> FiltroAcciones : acciones_viables
+
+    state "Filtro acciones" as FiltroAcciones {
+        [*] --> Filtrar
+        Filtrar --> [*] : A_viables
+    }
+
+    FiltroAcciones --> BucleK
+
+    state "Bucle K iteraciones" as BucleK {
+
+        [*] --> Paso1
+        state "Seleccion UCT" as Paso1 {
+            [*] --> UCTcheck
+            UCTcheck --> BajarHijo : no exploradas
+            BajarHijo --> UCTcheck
+            UCTcheck --> [*] : hoja
+        }
+
+        Paso1 --> Paso2
+
+        state "Expansion" as Paso2 {
+            [*] --> ElegirNoExplorada
+            ElegirNoExplorada --> NuevoNodo
+            NuevoNodo --> [*]
+        }
+
+        Paso2 --> Paso3
+
+        state "Rollout GBM" as Paso3 {
+            [*] --> ReconstruirCamino
+            ReconstruirCamino --> GBMcalibrar
+            GBMcalibrar --> GBMsimular
+            GBMsimular --> RecompensaRelativa
+            RecompensaRelativa --> [*]
+        }
+
+        Paso3 --> Paso4
+
+        state "Retropropagacion" as Paso4 {
+            [*] --> ActNodo
+            ActNodo --> SubirPadre : padre != None
+            SubirPadre --> ActNodo
+            SubirPadre --> [*]
+        }
+
+        Paso4 --> [*]
+    }
+
+    BucleK --> DecisionFinal
+
+    state "Decision final" as DecisionFinal {
+        [*] --> ArgmaxQN
+        ArgmaxQN --> Ranking
+        Ranking --> [*]
+    }
+
+    DecisionFinal --> [*] : a* + ranking

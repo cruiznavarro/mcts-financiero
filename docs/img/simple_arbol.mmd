@@ -1,0 +1,49 @@
+stateDiagram-v2
+    [*] --> Raiz : iter k
+
+    state "Raiz s0" as Raiz
+
+    Raiz --> Sel
+
+    state "Seleccion UCT" as Sel {
+        [*] --> UCT
+        UCT --> Bajar : expandido
+        Bajar --> UCT
+        UCT --> [*] : no exploradas
+    }
+
+    Sel --> Exp
+
+    state "Expansion" as Exp {
+        [*] --> Nuevo
+        Nuevo --> [*]
+    }
+
+    Exp --> Roll
+
+    state "Rollout GBM" as Roll {
+        [*] --> Reconstruir
+        Reconstruir --> Calibrar
+        Calibrar --> Simular
+        Simular --> Reward
+        Reward --> [*]
+    }
+
+    Roll --> Back
+
+    state "Retropropagacion" as Back {
+        [*] --> Update
+        Update --> Subir : padre != None
+        Subir --> Update
+        Subir --> [*]
+    }
+
+    Back --> Raiz : k < K
+    Back --> Dec : k = K
+
+    state "Decision" as Dec {
+        [*] --> ArgmaxQN
+        ArgmaxQN --> [*]
+    }
+
+    Dec --> [*] : a*

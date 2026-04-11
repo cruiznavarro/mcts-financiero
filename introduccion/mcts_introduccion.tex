@@ -1,0 +1,794 @@
+
+\documentclass[12pt, a4paper]{article}
+
+% ─── Codificación y fuente ───────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{lmodern}
+
+% ─── Matemáticas ────────────────────────────────────────────────────────────
+\usepackage{amsmath, amssymb, amsthm}
+
+% ─── Geometría de página ─────────────────────────────────────────────────────
+\usepackage[top=2.5cm, bottom=2.5cm, left=3cm, right=3cm]{geometry}
+
+% ─── Gráficos y colores ──────────────────────────────────────────────────────
+\usepackage{graphicx}
+\usepackage[dvipsnames, table]{xcolor}
+\definecolor{azuloscuro}{RGB}{0, 51, 102}
+\definecolor{azulclaro}{RGB}{220, 235, 252}
+\definecolor{grisclaro}{RGB}{245, 245, 245}
+\definecolor{verdeos}{RGB}{0, 100, 60}
+\definecolor{rojosuave}{RGB}{160, 30, 30}
+
+% ─── Hipervínculos ───────────────────────────────────────────────────────────
+\usepackage[hidelinks, colorlinks=true, linkcolor=azuloscuro,
+            urlcolor=azuloscuro, citecolor=azuloscuro]{hyperref}
+
+% ─── Cajas y entornos destacados ─────────────────────────────────────────────
+\usepackage{tcolorbox}
+\tcbuselibrary{skins, breakable, theorems}
+
+\tcbset{
+  hipotesis/.style={
+    colback=azulclaro, colframe=azuloscuro,
+    fonttitle=\bfseries\small, title={Hipótesis},
+    breakable, before skip=8pt, after skip=8pt,
+    left=6pt, right=6pt
+  },
+  nota/.style={
+    colback=grisclaro, colframe=gray!60,
+    fonttitle=\bfseries\small, title={Nota},
+    breakable, before skip=8pt, after skip=8pt,
+    left=6pt, right=6pt
+  },
+  clave/.style={
+    colback=yellow!10, colframe=orange!70!black,
+    fonttitle=\bfseries\small, title={Idea clave},
+    breakable, before skip=8pt, after skip=8pt,
+    left=6pt, right=6pt
+  },
+  teorema/.style={
+    colback=green!5, colframe=verdeos,
+    fonttitle=\bfseries\small,
+    breakable, before skip=8pt, after skip=8pt,
+    left=6pt, right=6pt
+  }
+}
+
+% ─── Código fuente ───────────────────────────────────────────────────────────
+\usepackage{listings}
+\lstset{
+  backgroundcolor=\color{grisclaro},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{azuloscuro}\bfseries,
+  commentstyle=\color{gray},
+  stringstyle=\color{rojosuave},
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{gray!50},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=6pt,
+  tabsize=4,
+  showstringspaces=false,
+  captionpos=b,
+  literate=
+    {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'{\i}}}1
+    {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1
+    {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1
+    {Ó}{{\'O}}1 {Ú}{{\'U}}1 {Ñ}{{\~N}}1
+    {←}{{$\leftarrow$}}1 {≠}{{$\neq$}}1
+}
+
+% ─── Tablas ──────────────────────────────────────────────────────────────────
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+% ─── Encabezados ─────────────────────────────────────────────────────────────
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textcolor{azuloscuro}{\textbf{Monte Carlo Tree Search}}}
+\fancyhead[R]{\small\textcolor{gray}{Introducción desde cero}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ─── Tipografía de títulos ───────────────────────────────────────────────────
+\usepackage{titlesec}
+\titleformat{\section}
+  {\large\bfseries\color{azuloscuro}}{\thesection.}{0.7em}{}[\vspace{-2pt}\rule{\linewidth}{0.4pt}]
+\titleformat{\subsection}
+  {\normalsize\bfseries\color{azuloscuro!80}}{\thesubsection.}{0.5em}{}
+\titleformat{\subsubsection}
+  {\normalsize\bfseries\color{gray!80!black}}{\thesubsubsection.}{0.5em}{}
+
+% ─── Párrafo ─────────────────────────────────────────────────────────────────
+\setlength{\parskip}{6pt}
+\setlength{\parindent}{0pt}
+
+% ─── Contador de hipótesis ────────────────────────────────────────────────────
+\newcounter{hipnum}
+\newcommand{\hip}[1]{%
+  \stepcounter{hipnum}%
+  \begin{tcolorbox}[hipotesis, title={Hipótesis H\thehipnum}]
+    #1
+  \end{tcolorbox}%
+}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+% ══════════════════════════════════════════════════════════════════════════════
+%  PORTADA
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\Huge\bfseries\color{azuloscuro} Monte Carlo Tree Search\par}
+  \vspace{0.5cm}
+  {\LARGE\color{gray!80!black} Introducción rigurosa desde cero\par}
+  \vspace{1.5cm}
+  \rule{0.6\linewidth}{1pt}
+  \vspace{1cm}
+
+  \begin{tcolorbox}[colback=azulclaro, colframe=azuloscuro, width=0.85\linewidth]
+    \centering\small
+    Este documento presenta el algoritmo Monte Carlo Tree Search (MCTS)
+    partiendo de cero, enunciando explícitamente las hipótesis en cada paso,
+    e incluyendo referencias a recursos externos curados por nivel.
+  \end{tcolorbox}
+
+  \vspace{1.5cm}
+  {\large Contenidos:\par}
+  \vspace{0.4cm}
+  \begin{tabular}{cl}
+    \textbullet & El problema de decisión secuencial \\
+    \textbullet & El bandido multi-brazo y UCB1 \\
+    \textbullet & Las cuatro fases de MCTS \\
+    \textbullet & UCT: Upper Confidence Bounds for Trees \\
+    \textbullet & Garantías teóricas de convergencia \\
+    \textbullet & Pseudocódigo comentado \\
+    \textbullet & Cuándo se cumplen/violan las hipótesis \\
+    \textbullet & Recursos por nivel de profundidad \\
+  \end{tabular}
+
+  \vfill
+  {\small\color{gray} Compilado con \LaTeX{} \textbullet{} Marzo 2026}
+\end{titlepage}
+
+\tableofcontents
+\clearpage
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{¿Qué problema queremos resolver?}
+% ══════════════════════════════════════════════════════════════════════════════
+
+Imagina que juegas al ajedrez. En cada turno tienes que elegir un movimiento.
+El problema es que el árbol de posibilidades futuras es astronómico: el ajedrez
+tiene aproximadamente $10^{120}$ partidas posibles (el llamado \textbf{número
+de Shannon}). Ningún computador puede explorar todo ese árbol en tiempo útil.
+
+Durante décadas la solución fue \textbf{minimax con poda alfa-beta}: explorar
+el árbol hasta cierta profundidad y usar una función de evaluación escrita a
+mano (p.\,ej., «el caballo vale 3 peones»). Esto funcionó razonablemente bien
+para ajedrez, pero fracasó en \textbf{Go}: el tablero es más grande, el factor
+de ramificación es $\approx 250$, y nadie supo escribir una buena función de
+evaluación para Go durante décadas.
+
+MCTS nació precisamente para resolver este vacío:
+
+\begin{tcolorbox}[clave]
+¿Cómo tomar buenas decisiones cuando el árbol es demasiado grande para
+explorarlo exhaustivamente \emph{y} no disponemos de una función de evaluación
+de posiciones?
+\end{tcolorbox}
+
+La respuesta de MCTS es \textbf{muestrear el futuro aleatoriamente} (método
+Monte Carlo) y \textbf{guiar la búsqueda} hacia las ramas más prometedoras
+usando estadísticos acumulados. El resultado es un algoritmo que:
+
+\begin{itemize}
+  \item No necesita función de evaluación escrita a mano.
+  \item Mejora su calidad cuanto más tiempo de cómputo se le da (\emph{anytime}).
+  \item Converge a la decisión óptima en el límite.
+\end{itemize}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Prerrequisito: el problema del bandido multi-brazo}
+% ══════════════════════════════════════════════════════════════════════════════
+
+Antes de entender MCTS es imprescindible entender el problema matemático que
+reside en su corazón.
+
+\subsection{Planteamiento}
+
+\textbf{Situación:} Estás en un casino con $K$ máquinas tragaperras (los
+«brazos» del bandido). Cada máquina $i \in \{1,\ldots,K\}$ tiene una
+distribución de recompensa $\nu_i$ con media desconocida $\mu_i$. Puedes tirar
+una palanca a la vez. Quieres \textbf{maximizar la recompensa total} en $n$
+tiradas.
+
+\hip{Las recompensas de cada máquina son \textbf{independientes entre sí e
+idénticamente distribuidas} (i.i.d.) a lo largo del tiempo \emph{para esa
+máquina}. Es decir, la distribución de la máquina $i$ no cambia con el tiempo
+ni depende de las otras máquinas.}
+
+\hip{Las recompensas están \textbf{acotadas} en el intervalo $[0,1]$ (o en
+algún intervalo conocido $[a,b]$). Esta hipótesis es necesaria para obtener
+cotas de concentración (desigualdad de Hoeffding) que garantizan los resultados
+teóricos.}
+
+El dilema fundamental se llama \textbf{equilibrio exploración--explotación}:
+
+\begin{itemize}
+  \item \textbf{Explotación:} tiramos siempre de la máquina que mejor nos ha
+    ido hasta ahora.
+  \item \textbf{Exploración:} probamos máquinas poco visitadas por si son
+    mejores.
+\end{itemize}
+
+Si solo explotamos, podemos quedarnos atascados en un óptimo local. Si solo
+exploramos, desperdiciamos tiradas en máquinas malas.
+
+\subsection{El arrepentimiento (regret)}
+
+Para medir la calidad de un algoritmo de bandido, definimos el
+\textbf{arrepentimiento acumulado} tras $n$ tiradas:
+
+\begin{equation}
+  R_n \;=\; n\,\mu^* - \sum_{t=1}^{n} r_t
+\end{equation}
+
+donde $\mu^* = \max_i \mu_i$ es la recompensa de la mejor máquina y $r_t$ es
+la recompensa obtenida en la tirada $t$. Un algoritmo es bueno si $R_n$ crece
+lentamente con $n$.
+
+\begin{tcolorbox}[teorema, title={Resultado fundamental (Lai \& Robbins, 1985)}]
+Bajo las hipótesis H1 y H2, ningún algoritmo puede lograr regret menor que
+$\Omega(\log n)$ en general. El regret logarítmico es por tanto \textbf{óptimo}.
+\end{tcolorbox}
+
+\subsection{El algoritmo UCB1}
+
+El algoritmo \textbf{UCB1} (Auer et al., 2002) elige en cada tirada $t$ la
+máquina $i$ que maximiza:
+
+\begin{equation}
+  \text{UCB1}(i) \;=\;
+  \underbrace{\bar{x}_i}_{\text{explotación}}
+  +
+  \underbrace{\sqrt{\dfrac{2\ln n}{n_i}}}_{\text{exploración}}
+\end{equation}
+
+donde:
+\begin{itemize}
+  \item $\bar{x}_i = \frac{1}{n_i}\sum_{\text{tiradas en }i} r_t$: media
+    empírica de recompensas de la máquina $i$.
+  \item $n$: total de tiradas realizadas hasta el momento.
+  \item $n_i$: número de veces que se ha tirado la máquina $i$.
+\end{itemize}
+
+\textbf{Interpretación geométrica del segundo término:}
+El término $\sqrt{2\ln n / n_i}$ es proporcional al \emph{radio de un
+intervalo de confianza} para $\mu_i$. Cuando $n_i$ es pequeño (máquina poco
+explorada), este término es grande, incentivando visitar esa máquina. A medida
+que $n_i$ crece, el intervalo se estrecha y confiamos más en la estimación
+empírica.
+
+\begin{tcolorbox}[teorema, title={Garantía de UCB1 (Auer et al., 2002)}]
+Bajo las hipótesis H1 y H2, UCB1 garantiza un regret acumulado:
+\[
+  \mathbb{E}[R_n] \;\leq\; \sum_{i:\,\mu_i < \mu^*} \frac{8\ln n}{\Delta_i}
+  + \left(1 + \frac{\pi^2}{3}\right)\sum_{i:\,\mu_i < \mu^*} \Delta_i
+\]
+donde $\Delta_i = \mu^* - \mu_i$ es la brecha de la máquina $i$ respecto a la
+óptima. En particular, $\mathbb{E}[R_n] = O(\log n)$, que es óptimo.
+\end{tcolorbox}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{De bandidos a árboles de decisión}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\subsection{El árbol de juego}
+
+\hip{El problema puede modelarse como un \textbf{árbol de búsqueda} donde
+cada nodo representa un estado del juego, cada arista representa una acción
+legal, y existen estados terminales con recompensa definida ($+1$ victoria,
+$0$ derrota, $0.5$ empate).}
+
+\hip{El árbol es \textbf{demasiado grande} para explorarlo exhaustivamente. Por
+esto no podemos aplicar minimax completo.}
+
+\hip{El juego es de \textbf{información perfecta}: ambos jugadores conocen el
+estado completo del sistema en todo momento. Esta hipótesis se relaja en
+versiones avanzadas (ver POMCP).}
+
+Formalmente, modelamos el problema como un \textbf{proceso de decisión de
+Markov} (MDP):
+\[
+  \mathcal{M} = (\mathcal{S},\, \mathcal{A},\, T,\, R,\, \gamma)
+\]
+donde $\mathcal{S}$ es el espacio de estados, $\mathcal{A}$ el espacio de
+acciones, $T: \mathcal{S}\times\mathcal{A} \to \Delta(\mathcal{S})$ la función
+de transición, $R$ la función de recompensa, y $\gamma \in [0,1]$ el factor de
+descuento.
+
+\subsection{La conexión entre árboles y bandidos}
+
+\begin{tcolorbox}[clave]
+Cada nodo del árbol tiene varios hijos (movimientos posibles). Elegir cuál hijo
+visitar es \textbf{exactamente el problema del bandido multi-brazo}: cada hijo
+es una ``máquina'' cuya recompensa esperada es la calidad de ese movimiento,
+que desconocemos.
+
+La idea central de MCTS es \textbf{tratar cada nodo interno del árbol como una
+instancia independiente del problema del bandido}.
+\end{tcolorbox}
+
+Esta observación, aparentemente simple, es la clave que hace funcionar MCTS.
+Cada nodo almacena dos estadísticos:
+
+\begin{itemize}
+  \item $N(v)$: número de veces que el nodo $v$ ha sido visitado.
+  \item $W(v)$: suma acumulada de recompensas obtenidas en simulaciones que
+    pasaron por $v$.
+\end{itemize}
+
+El \textbf{valor estimado} del nodo es $Q(v) = W(v)/N(v)$.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{El algoritmo MCTS: las cuatro fases}
+% ══════════════════════════════════════════════════════════════════════════════
+
+MCTS construye iterativamente un árbol $\mathcal{T}$ partiendo de la raíz
+(estado actual del juego). Cada iteración ejecuta cuatro fases.
+
+% ─── FASE 1 ──────────────────────────────────────────────────────────────────
+\subsection{Fase 1 — Selección (UCT)}
+
+\textbf{Hipótesis en uso: H1, H2, H3, H4.}
+
+Partiendo de la raíz, recorremos el árbol hacia abajo usando el criterio
+\textbf{UCT} (Upper Confidence Bounds for Trees, Kocsis \& Szepesvári, 2006),
+que adapta UCB1 al contexto de árboles:
+
+\begin{equation}
+  \text{UCT}(v) \;=\;
+  \underbrace{\dfrac{W(v)}{N(v)}}_{\text{explotación}}
+  +\;
+  c\underbrace{\sqrt{\dfrac{\ln N(\mathrm{padre}(v))}{N(v)}}}_{\text{exploración}}
+  \label{eq:uct}
+\end{equation}
+
+donde $c > 0$ es el parámetro de exploración. El valor teóricamente motivado
+es $c = \sqrt{2}$, aunque en la práctica se ajusta por validación cruzada.
+
+\textbf{Procedimiento:} Desde la raíz, en cada nivel seleccionamos el hijo
+con mayor $\text{UCT}(v)$, y descendemos hasta alcanzar un \textbf{nodo hoja}:
+un nodo que tiene al menos un hijo no visitado, o un estado terminal.
+
+\begin{tcolorbox}[nota]
+\textbf{¿Por qué $\ln N(\mathrm{padre})$ y no $\ln n$ total?} Porque lo que
+nos importa es el número de veces que hemos tenido la oportunidad de elegir
+entre los hijos de ese nodo. Esto hace que el criterio sea localmente justo
+en cada nivel del árbol.
+\end{tcolorbox}
+
+% ─── FASE 2 ──────────────────────────────────────────────────────────────────
+\subsection{Fase 2 — Expansión}
+
+\textbf{Hipótesis en uso: H3.}
+
+Una vez en el nodo hoja, si el nodo no es terminal y tiene hijos no visitados,
+añadimos \textbf{uno de esos hijos} al árbol, inicializado con $N = 0$,
+$W = 0$.
+
+\hip{Expandir \textbf{un único hijo} por iteración (en lugar de todos) es
+suficiente para garantizar la convergencia y mantiene el coste por iteración
+acotado por $O(b)$, donde $b$ es el factor de ramificación.}
+
+En algunas implementaciones se expanden todos los hijos a la vez (expansión
+total). Esto acelera la convergencia en árboles con branching factor pequeño,
+pero puede ser prohibitivo si $b$ es grande.
+
+% ─── FASE 3 ──────────────────────────────────────────────────────────────────
+\subsection{Fase 3 — Simulación (Rollout)}
+
+\textbf{Hipótesis en uso: H1, H2, H3, y las nuevas H7 y H8.}
+
+Esta es la fase más característica y la que da el nombre «Monte Carlo» al
+algoritmo.
+
+\hip{Desde el nodo expandido, podemos \textbf{simular partidas} hasta el
+final usando una política simple (típicamente movimientos uniformemente
+aleatorios). El resultado de esa partida es una \textbf{estimación insesgada}
+del valor real del nodo:
+\[
+  \mathbb{E}[\hat{G} \mid s] = V^{\pi_{\mathrm{ro}}}(s)
+\]
+donde $\pi_{\mathrm{ro}}$ es la política de rollout.}
+
+\hip{La \textbf{varianza} de las recompensas es finita. Esto garantiza que el
+promedio de múltiples rollouts converge al valor esperado por la ley de los
+grandes números.}
+
+\begin{tcolorbox}[nota]
+La hipótesis H7 es \textbf{fuerte}: un rollout aleatorio es una estimación muy
+ruidosa del valor real. Funciona porque se promedia sobre \emph{muchas}
+iteraciones. En juegos donde la aleatoriedad no correlaciona con la victoria
+(p.\,ej., Go a nivel profesional), el rollout aleatorio es casi inútil; esto
+motivó reemplazarlo por redes neuronales en AlphaZero.
+\end{tcolorbox}
+
+El resultado es un escalar $\hat{G}$:
+\begin{itemize}
+  \item $\hat{G} = 1$: el jugador actual ganó la partida simulada.
+  \item $\hat{G} = 0$: el jugador actual perdió.
+  \item $\hat{G} = 0.5$: empate.
+\end{itemize}
+
+% ─── FASE 4 ──────────────────────────────────────────────────────────────────
+\subsection{Fase 4 — Retropropagación (Backpropagation)}
+
+\textbf{Hipótesis en uso: H3.}
+
+El resultado $\hat{G}$ se propaga hacia arriba actualizando todos los nodos
+del camino recorrido en la Fase 1:
+
+\begin{equation}
+  N(v) \;\leftarrow\; N(v) + 1, \qquad
+  W(v) \;\leftarrow\; W(v) + \hat{G}
+\end{equation}
+
+para cada $v$ en el camino desde el nodo expandido hasta la raíz.
+
+\begin{tcolorbox}[nota]
+\textbf{Juegos de dos jugadores:} cuando $\hat{G}$ sube al nodo del oponente,
+se usa $1 - \hat{G}$. Lo que es bueno para el jugador actual es malo para el
+rival. Esta alternancia es automática si cada nodo almacena la perspectiva
+del jugador que mueve en ese turno.
+\end{tcolorbox}
+
+% ─── DECISIÓN FINAL ──────────────────────────────────────────────────────────
+\subsection{Decisión final}
+
+Tras $n$ iteraciones, se elige la acción desde la raíz hacia el hijo con
+\textbf{mayor $N(v)$} (más visitado). Alternativamente, se puede usar mayor
+$Q(v) = W(v)/N(v)$.
+
+\begin{tcolorbox}[clave]
+¿Por qué más visitado en lugar de mayor $Q$? Porque el hijo más visitado es
+aquel que UCT ha confirmado repetidamente como prometedor. Un hijo con $Q$
+alto pero pocas visitas puede ser un \textbf{artefacto estadístico} (error de
+muestreo con pocos datos).
+\end{tcolorbox}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Garantías teóricas de convergencia}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\textbf{Hipótesis en uso: H1, H2.}
+
+\begin{tcolorbox}[teorema, title={Teorema de convergencia de UCT (Kocsis \& Szepesvári, 2006)}]
+Sea $a^*$ la acción óptima en la raíz. Bajo las hipótesis H1 y H2 (recompensas
+acotadas, i.i.d.\ por nodo), UCT satisface:
+\[
+  \Pr\!\left[\text{acción subóptima seleccionada tras } n
+    \text{ iteraciones}\right] = O\!\left(\frac{\log n}{n}\right)
+\]
+En particular, la probabilidad de error tiende a $0$ cuando $n \to \infty$:
+UCT \textbf{converge a la decisión óptima}.
+\end{tcolorbox}
+
+\textbf{Propiedades adicionales:}
+
+\begin{itemize}
+  \item \textbf{Anytime:} MCTS puede detenerse en cualquier momento y devuelve
+    la mejor decisión encontrada hasta ese punto. Cuanto más tiempo se le da,
+    mejor.
+  \item \textbf{Sin función de evaluación:} no requiere conocimiento experto
+    del dominio más allá de conocer las reglas del juego.
+  \item \textbf{Asimetría:} MCTS explora el árbol de forma asimétrica,
+    profundizando más en las ramas prometedoras y abandonando rápidamente las
+    malas. A diferencia de minimax, no explora en anchura uniforme.
+\end{itemize}
+
+\textbf{Complejidad computacional por iteración:}
+
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+\textbf{Fase} & \textbf{Complejidad} \\
+\midrule
+Selección (profundidad $d$) & $O(d)$ \\
+Expansión (branching $b$) & $O(b)$ \\
+Simulación (profundidad $h$) & $O(h)$ \\
+Retropropagación & $O(d)$ \\
+\midrule
+\textbf{Total por iteración} & $O(d + b + h)$ \\
+\textbf{Total ($n$ iteraciones)} & $O(n(d + b + h))$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Pseudocódigo comentado}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{lstlisting}[language=Python, caption={MCTS — pseudocódigo en Python}]
+def MCTS(estado_raiz, n_iteraciones, c=1.41):
+    """
+    Ejecuta n_iteraciones del ciclo MCTS y retorna la mejor accion.
+    c: parametro de exploracion (sqrt(2) por defecto).
+    """
+    raiz = Nodo(estado=estado_raiz, padre=None)
+
+    for _ in range(n_iteraciones):
+
+        # ── FASE 1: SELECCION ─────────────────────────────────────────
+        # Hipotesis: usamos UCT para navegar el arbol ya construido.
+        # Descendemos hasta un nodo hoja (no completamente expandido
+        # o estado terminal).
+        nodo = raiz
+        while nodo.completamente_expandido() and not nodo.es_terminal():
+            nodo = max(nodo.hijos,
+                       key=lambda v: v.W/v.N + c*(log(v.padre.N)/v.N)**0.5)
+
+        # ── FASE 2: EXPANSION ─────────────────────────────────────────
+        # Hipotesis: hay hijos no visitados; expandimos uno.
+        if not nodo.es_terminal():
+            nodo = nodo.expandir_hijo_no_visitado()
+
+        # ── FASE 3: SIMULACION (ROLLOUT) ──────────────────────────────
+        # Hipotesis: el rollout aleatorio estima el valor real del nodo
+        # (estimacion insesgada pero ruidosa).
+        resultado = simular_partida_aleatoria(nodo.estado)
+
+        # ── FASE 4: RETROPROPAGACION ──────────────────────────────────
+        # Actualizamos N y W en todos los nodos del camino recorrido.
+        while nodo is not None:
+            nodo.N += 1
+            nodo.W += resultado
+            resultado = 1 - resultado  # alternamos perspectiva (2 jugadores)
+            nodo = nodo.padre
+
+    # Elegir la mejor accion: hijo de la raiz con mayor N (mas visitado)
+    return max(raiz.hijos, key=lambda v: v.N).accion
+\end{lstlisting}
+
+\textbf{Estructura del nodo:}
+\begin{lstlisting}[language=Python, caption={Clase Nodo para MCTS}]
+class Nodo:
+    def __init__(self, estado, padre, accion=None):
+        self.estado  = estado       # estado del juego en este nodo
+        self.padre   = padre        # nodo padre (None si es raiz)
+        self.accion  = accion       # accion que llevo aqui desde el padre
+        self.hijos   = []           # lista de nodos hijo expandidos
+        self.N = 0                  # numero de visitas
+        self.W = 0.0                # suma acumulada de recompensas
+
+    def completamente_expandido(self):
+        acciones_legales = self.estado.acciones_legales()
+        acciones_expandidas = [h.accion for h in self.hijos]
+        return set(acciones_legales) == set(acciones_expandidas)
+
+    def expandir_hijo_no_visitado(self):
+        acciones_no_visitadas = [
+            a for a in self.estado.acciones_legales()
+            if a not in [h.accion for h in self.hijos]
+        ]
+        accion = random.choice(acciones_no_visitadas)
+        nuevo_estado = self.estado.aplicar(accion)
+        hijo = Nodo(estado=nuevo_estado, padre=self, accion=accion)
+        self.hijos.append(hijo)
+        return hijo
+\end{lstlisting}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Cuándo se cumplen y cuándo se violan las hipótesis}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{longtable}{L{3cm} L{5cm} L{6cm}}
+\toprule
+\textbf{Hipótesis} & \textbf{¿Cuándo se viola?} & \textbf{Consecuencia y solución} \\
+\midrule
+\endhead
+\textbf{H1} Recompensas i.i.d. &
+  Oponente adaptativo; entornos no estacionarios; juegos con elementos
+  aleatorios dependientes del tiempo &
+  UCT puede no converger. Solución: usar variantes robustas o modelar
+  explícitamente la estocasticidad. \\[6pt]
+
+\textbf{H2} Recompensas acotadas &
+  Recompensas continuas sin límite (p.\,ej., puntuación acumulable
+  indefinidamente) &
+  Las cotas de regret no aplican directamente. Solución: normalizar las
+  recompensas al rango $[0,1]$. \\[6pt]
+
+\textbf{H3} Árbol de juego &
+  Juegos con ciclos (tablero infinito, posiciones repetidas en ajedrez/Go) &
+  El árbol se convierte en un grafo (DAG). Solución: tablas de transposición
+  (tabla hash de estados $\to$ estadísticos). \\[6pt]
+
+\textbf{H5} Información perfecta &
+  Póker, bridge, Starcraft, robótica con sensores ruidosos &
+  El estado real es latente (POMDP). Solución: POMCP (opera sobre espacios
+  de creencias) o IS-MCTS (Information Set MCTS). \\[6pt]
+
+\textbf{H6} Expansión de un hijo &
+  Branching factor muy pequeño ($b \leq 5$) &
+  La expansión total (todos los hijos a la vez) puede ser más eficiente. \\[6pt]
+
+\textbf{H7} Rollout estima bien &
+  Juegos donde el azar aleatorio no correlaciona con la victoria
+  (Go a nivel profesional, ajedrez) &
+  El rollout es inútil o contraproducente. Solución: reemplazarlo por una
+  red neuronal de valor (AlphaZero). \\[6pt]
+
+\textbf{H8} Varianza finita &
+  Recompensas de cola pesada (distribuciones de Pareto) &
+  La ley de los grandes números converge muy lentamente. Solución:
+  algoritmos de bandido robustos (mediana de medias). \\
+
+\bottomrule
+\caption{Resumen de hipótesis, condiciones de violación y soluciones.}
+\end{longtable}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Recursos por nivel de profundidad}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\subsection*{Nivel 0 — Intuición visual (sin matemáticas)}
+
+\begin{itemize}
+  \item \href{https://medium.com/data-science/the-animated-monte-carlo-tree-search-mcts-c05bb48b018c}%
+    {\textbf{The Animated MCTS} — Thomas Kurbiel, Medium}: animaciones GIF de
+    cada una de las cuatro fases. Ideal para construir la intuición visual antes
+    de abordar la fórmula.
+
+  \item \href{https://medium.com/@_michelangelo_/monte-carlo-tree-search-mcts-algorithm-for-dummies-74b2bae53bfa}%
+    {\textbf{MCTS for Dummies} — Medium}: analogía con exploración de mapas y
+    lenguaje completamente accesible.
+\end{itemize}
+
+\subsection*{Nivel 1 — Introductorio con código Python}
+
+\begin{itemize}
+  \item \href{https://int8.io/monte-carlo-tree-search-beginners-guide/}%
+    {\textbf{Int8 — Beginner's Guide to MCTS}}: el mejor recurso introductorio
+    completo. Cubre teoría, pseudocódigo e implementación en Python con juego
+    de ejemplo. \textbf{Altamente recomendado como primer recurso técnico}.
+
+  \item \href{https://ai-boson.github.io/mcts/}%
+    {\textbf{ai-boson — MCTS Python Step by Step}}: implementación limpia y
+    comentada con Tic-Tac-Toe. Ideal para leer en paralelo al código.
+\end{itemize}
+
+\subsection*{Nivel 2 — Introductorio con teoría básica}
+
+\begin{itemize}
+  \item \href{https://towardsdatascience.com/monte-carlo-tree-search-an-introduction-503d8c04e168/}%
+    {\textbf{TDS — MCTS An Introduction} — Benjamin Wang}: narrativa clara con
+    fórmulas básicas y ejemplos de aplicación.
+
+  \item \href{https://gibberblot.github.io/rl-notes/single-agent/mcts.html}%
+    {\textbf{Mastering Reinforcement Learning — MCTS Chapter}}: libro de texto
+    libre en línea con MCTS aplicado a RL, incluyendo GridWorld y Freeway.
+    Tiene visualizaciones interactivas.
+
+  \item \href{https://lilianweng.github.io/posts/2018-01-23-multi-armed-bandit/}%
+    {\textbf{Lilian Weng — The Multi-Armed Bandit Problem}}: el mejor post para
+    el prerrequisito de bandidos. Con gráficas, código y pruebas informales.
+\end{itemize}
+
+\subsection*{Nivel 3 — Tutorial académico completo}
+
+\begin{itemize}
+  \item \href{https://www.informs-sim.org/wsc18papers/includes/files/021.pdf}%
+    {\textbf{WSC 2018 — Monte Carlo Tree Search: A Tutorial (PDF)}}: artículo
+    tutorial publicado en el Winter Simulation Conference. Riguroso pero
+    accesible. Cubre historia, variantes y aplicaciones.
+
+  \item \href{https://courses.cs.washington.edu/courses/cse599i/18wi/resources/lecture19/lecture19.pdf}%
+    {\textbf{UWashington — Lecture 19: MCTS (PDF)}}: diapositivas de clase
+    universitaria con demostraciones informales del teorema de convergencia.
+
+  \item \href{https://uq.pressbooks.pub/mastering-reinforcement-learning/chapter/monte-carlo-tree-search/}%
+    {\textbf{UQ Press — MCTS en RL}}: versión en libro de texto con contexto
+    de aprendizaje por refuerzo completo.
+\end{itemize}
+
+\subsection*{Nivel 4 — Artículos de investigación de referencia}
+
+\begin{itemize}
+  \item \href{https://link.springer.com/article/10.1007/s10462-022-10228-y}%
+    {\textbf{Springer (2022) — MCTS: A Review of Recent Modifications}}: revisión
+    sistemática de todas las variantes modernas de MCTS (PUCT, RAVE, GRAVE,
+    progressive widening, etc.) con tabla comparativa de aplicaciones.
+
+  \item \href{https://dke.maastrichtuniversity.nl/m.winands/documents/Encyclopedia_MCTS.pdf}%
+    {\textbf{Winands — Encyclopedia of MCTS (PDF)}}: entrada de enciclopedia
+    académica. La referencia más exhaustiva del estado del arte clásico.
+
+  \item \href{https://www.chessprogramming.org/UCT}%
+    {\textbf{Chessprogramming Wiki — UCT}}: detalles de implementación de UCT
+    específicos para juegos de tablero, con variantes y trucos de rendimiento.
+\end{itemize}
+
+\subsection*{Prerrequisito: problema del bandido multi-brazo}
+
+\begin{itemize}
+  \item \href{https://lilianweng.github.io/posts/2018-01-23-multi-armed-bandit/}%
+    {Lilian Weng — Multi-Armed Bandit (ya citado, es el mejor)}
+
+  \item \href{https://www.turing.com/kb/guide-on-upper-confidence-bound-algorithm-in-reinforced-learning}%
+    {\textbf{Turing.com — Guía de UCB}}: explicación paso a paso del algoritmo
+    UCB1 con ejemplos numéricos.
+
+  \item \href{https://cse442-17f.github.io/LinUCB/}%
+    {\textbf{CSE 442 — Multi-Armed Bandits (interactivo)}}: visualización
+    interactiva del dilema exploración-explotación en bandidos.
+\end{itemize}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Resumen: el mapa conceptual del algoritmo}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{center}
+\begin{tabular}{ccccc}
+  \toprule
+  \textbf{Fase} & \textbf{Pregunta} & \textbf{Herramienta} & \textbf{Hipótesis clave} & \textbf{Parámetro} \\
+  \midrule
+  Selección & ¿Por qué rama bajar? & UCT & H1, H2 & $c$ \\
+  Expansión & ¿Qué nodo añadir? & Aleatorio o heurístico & H6 & $n_{\min}$ \\
+  Simulación & ¿Cuál es el valor? & Rollout aleatorio & H7, H8 & política $\pi_{\mathrm{ro}}$ \\
+  Retropropagación & ¿Cómo actualizar? & Promedio acumulado & H3 & — \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{1em}
+
+\begin{tcolorbox}[clave, title={Resumen en una frase}]
+MCTS trata cada nodo del árbol de juego como un problema de bandido
+multi-brazo, usa UCT para balancear exploración y explotación en cada nivel,
+y estima el valor de los estados desconocidos mediante simulaciones
+Monte Carlo — sin necesitar ninguna función de evaluación escrita a mano.
+\end{tcolorbox}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section*{Referencias principales}
+% ══════════════════════════════════════════════════════════════════════════════
+\addcontentsline{toc}{section}{Referencias principales}
+
+\begin{enumerate}
+  \item Kocsis, L., \& Szepesvári, C. (2006). \textit{Bandit based Monte-Carlo
+    Planning}. In \textit{European Conference on Machine Learning (ECML)},
+    282--293. \textbf{[Artículo fundacional de UCT]}
+
+  \item Auer, P., Cesa-Bianchi, N., \& Fischer, P. (2002). Finite-time analysis
+    of the multiarmed bandit problem. \textit{Machine Learning}, 47, 235--256.
+    \textbf{[Garantías de UCB1]}
+
+  \item Lai, T.\,L., \& Robbins, H. (1985). Asymptotically efficient adaptive
+    allocation rules. \textit{Advances in Applied Mathematics}, 6(1), 4--22.
+    \textbf{[Cota inferior del regret]}
+
+  \item Browne, C. et al. (2012). A survey of Monte Carlo tree search methods.
+    \textit{IEEE TCIAIG}, 4(1), 1--43. \textbf{[La survey de referencia clásica]}
+
+  \item Silver, D. et al. (2016). Mastering the game of Go with deep neural
+    networks and tree search. \textit{Nature}, 529, 484--489.
+    \textbf{[AlphaGo]}
+
+  \item Silver, D. et al. (2018). A general reinforcement learning algorithm
+    that masters chess, shogi, and Go through self-play. \textit{Science},
+    362(6419), 1140--1144. \textbf{[AlphaZero]}
+\end{enumerate}
+
+\end{document}

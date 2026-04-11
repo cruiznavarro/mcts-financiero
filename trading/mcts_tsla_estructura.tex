@@ -1,0 +1,1504 @@
+\documentclass[12pt, a4paper]{article}
+
+% ─── Codificación y fuente ───────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{lmodern}
+
+% ─── Matemáticas ────────────────────────────────────────────────────────────
+\usepackage{amsmath, amssymb, amsthm}
+
+% ─── Geometría de página ─────────────────────────────────────────────────────
+\usepackage[top=2.5cm, bottom=2.5cm, left=2.8cm, right=2.8cm]{geometry}
+
+% ─── Gráficos y colores ──────────────────────────────────────────────────────
+\usepackage{graphicx}
+\usepackage[dvipsnames, table]{xcolor}
+\definecolor{azuloscuro}{RGB}{0, 51, 102}
+\definecolor{azulclaro}{RGB}{220, 235, 252}
+\definecolor{azulmedio}{RGB}{180, 210, 245}
+\definecolor{grisclaro}{RGB}{248, 248, 248}
+\definecolor{grisborde}{RGB}{210, 210, 210}
+\definecolor{verdeos}{RGB}{0, 100, 60}
+\definecolor{rojosuave}{RGB}{160, 30, 30}
+\definecolor{naranja}{RGB}{180, 90, 0}
+\definecolor{morado}{RGB}{90, 30, 130}
+
+% ─── Hipervínculos ───────────────────────────────────────────────────────────
+\usepackage[hidelinks, colorlinks=true, linkcolor=azuloscuro,
+            urlcolor=azuloscuro, citecolor=azuloscuro]{hyperref}
+
+% ─── Cajas decorativas ───────────────────────────────────────────────────────
+\usepackage{tcolorbox}
+\tcbuselibrary{skins, breakable, theorems, listings}
+
+\tcbset{
+  bloque/.style={
+    colback=azulclaro, colframe=azuloscuro,
+    fonttitle=\bfseries\small, breakable,
+    before skip=8pt, after skip=8pt, left=6pt, right=6pt
+  },
+  nota/.style={
+    colback=grisclaro, colframe=grisborde,
+    fonttitle=\bfseries\small, title={Nota},
+    breakable, before skip=8pt, after skip=8pt,
+    left=6pt, right=6pt
+  },
+  clave/.style={
+    colback=yellow!8, colframe=naranja,
+    fonttitle=\bfseries\small, title={Idea clave},
+    breakable, before skip=8pt, after skip=8pt,
+    left=6pt, right=6pt
+  },
+  mejora/.style={
+    colback=green!5, colframe=verdeos,
+    fonttitle=\bfseries\small,
+    breakable, before skip=8pt, after skip=8pt,
+    left=6pt, right=6pt
+  },
+  figura/.style={
+    colback=morado!5, colframe=morado!60,
+    fonttitle=\bfseries\small,
+    breakable, before skip=8pt, after skip=8pt,
+    left=6pt, right=6pt
+  }
+}
+
+% ─── Código fuente ───────────────────────────────────────────────────────────
+\usepackage{listings}
+
+\lstdefinestyle{pycode}{
+  language=Python,
+  backgroundcolor=\color{grisclaro},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{azuloscuro}\bfseries,
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{rojosuave},
+  emphstyle=\color{verdeos}\bfseries,
+  emph={self, None, True, False, list, dict, tuple, float, int, str, bool,
+        Optional, np, pd, plt, math},
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{grisborde},
+  numbers=left,
+  numberstyle=\tiny\color{gray!70},
+  numbersep=8pt,
+  tabsize=4,
+  showstringspaces=false,
+  captionpos=b,
+  xleftmargin=12pt,
+  xrightmargin=4pt,
+  aboveskip=6pt,
+  belowskip=6pt,
+  literate=
+    {á}{{\'{a}}}1 {é}{{\'{e}}}1 {í}{{\'{i}}}1
+    {ó}{{\'{o}}}1 {ú}{{\'{u}}}1 {ñ}{{\~{n}}}1
+    {Á}{{\'{A}}}1 {É}{{\'{E}}}1 {Í}{{\'{I}}}1
+    {Ó}{{\'{O}}}1 {Ú}{{\'{U}}}1 {Ñ}{{\~{N}}}1
+    {→}{{$\rightarrow$}}1 {←}{{$\leftarrow$}}1
+    {≥}{{$\geq$}}1 {≤}{{$\leq$}}1
+}
+
+\lstset{style=pycode}
+
+% ─── Tablas ──────────────────────────────────────────────────────────────────
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+
+% ─── Encabezados ─────────────────────────────────────────────────────────────
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textcolor{azuloscuro}{\textbf{MCTS Financiero}}}
+\fancyhead[R]{\small\textcolor{gray}{Estructura \texttt{mcts\_tsla.py}}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ─── Títulos ─────────────────────────────────────────────────────────────────
+\usepackage{titlesec}
+\titleformat{\section}
+  {\large\bfseries\color{azuloscuro}}{\thesection.}{0.7em}{}
+  [\vspace{-2pt}\rule{\linewidth}{0.4pt}]
+\titleformat{\subsection}
+  {\normalsize\bfseries\color{azuloscuro!80}}{\thesubsection.}{0.5em}{}
+\titleformat{\subsubsection}
+  {\normalsize\bfseries\color{gray!80!black}}{\thesubsubsection.}{0.4em}{}
+
+% ─── Párrafo ─────────────────────────────────────────────────────────────────
+\setlength{\parskip}{5pt}
+\setlength{\parindent}{0pt}
+
+% ─── Tabla de contenidos ─────────────────────────────────────────────────────
+\usepackage{tocloft}
+\renewcommand{\cftsecfont}{\bfseries\color{azuloscuro}}
+\renewcommand{\cftsubsecfont}{\color{azuloscuro!70}}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+% ══════════════════════════════════════════════════════════════════════════════
+%  PORTADA
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{titlepage}
+  \centering
+  \vspace*{1.8cm}
+  {\Huge\bfseries\color{azuloscuro} MCTS Financiero\par}
+  \vspace{0.4cm}
+  {\LARGE\color{gray!80!black} Estructura detallada de \texttt{mcts\_tsla.py}\par}
+  \vspace{1.2cm}
+  \rule{0.6\linewidth}{1pt}
+  \vspace{0.8cm}
+
+  \begin{tcolorbox}[colback=azulclaro, colframe=azuloscuro, width=0.88\linewidth]
+    \centering\small
+    Guía de implementación de un agente \textbf{Monte Carlo Tree Search}\\
+    para la \textbf{evaluación de posición en un activo financiero} (TSLA).\\[4pt]
+    Basada en \texttt{mcts\_trading.py} y \texttt{mcts\_portfolio.py},\\
+    con mejoras en rollout, métricas de riesgo y visualizaciones.
+  \end{tcolorbox}
+
+  \vspace{1.2cm}
+  \begin{tabular}{rl}
+    \textbf{Activo de referencia:} & Tesla, Inc.\ (\texttt{TSLA}) \\[3pt]
+    \textbf{Marco algorítmico:}    & Monte Carlo Tree Search (UCT/UCB1) \\[3pt]
+    \textbf{Rollout estocástico:}  & GBM multivariado con calibración rolling \\[3pt]
+    \textbf{Salidas generadas:}    & 5 figuras + tabla de métricas + reporte \texttt{.md} \\
+  \end{tabular}
+
+  \vfill
+  {\small\color{gray} Carpeta \texttt{MonteCarlo/mcts/mcts\_trading/} \quad --- \quad \today}
+\end{titlepage}
+
+% ══════════════════════════════════════════════════════════════════════════════
+%  TABLA DE CONTENIDOS
+% ══════════════════════════════════════════════════════════════════════════════
+\tableofcontents
+\newpage
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Visión general del archivo}
+% ══════════════════════════════════════════════════════════════════════════════
+
+El archivo \texttt{mcts\_tsla.py} se organiza en \textbf{10 secciones numeradas},
+siguiendo la misma convención de los archivos existentes en la carpeta
+\texttt{mcts\_trading/}. La secuencia lógica es:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{C{0.5cm} L{3.8cm} L{9cm}}
+\toprule
+\textbf{\#} & \textbf{Sección} & \textbf{Contenido} \\
+\midrule
+0 & Cabecera y constantes & Imports, parámetros globales configurables \\
+1 & \texttt{class Action} & Espacio de acciones discretas (5 niveles) \\
+2 & \texttt{class State} & Estado del entorno + \texttt{position\_ratio()} \\
+3 & \texttt{class Node} & Nodo UCB1 + registro de historial de visitas \\
+4 & \texttt{class MCTS\_Agent} & Motor MCTS: selección, expansión, rollout GBM, backprop \\
+5 & \texttt{download\_data()} & Descarga via \texttt{yfinance} \\
+6 & \texttt{class Backtester} & Backtest walk-forward + métricas extendidas \\
+7 & \texttt{class Visualizer} & 5 figuras con múltiples paneles \\
+8 & \texttt{print\_metrics\_table()} & Resumen tabular en consola \\
+9 & \texttt{save\_report()} & Reporte \texttt{.md} con figuras \\
+10 & \texttt{\_\_main\_\_} & Bloque de entrada principal \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{tcolorbox}[clave]
+  Cada sección es \textbf{autocontenida}: se puede leer y modificar sin afectar
+  a las demás. Los datos fluyen desde la sección~5 hacia abajo a través del
+  diccionario \texttt{results} que devuelve el \texttt{Backtester}.
+\end{tcolorbox}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Sección 0 --- Cabecera y constantes globales}
+% ══════════════════════════════════════════════════════════════════════════════
+
+Todos los parámetros que el usuario querrá ajustar se concentran aquí, en
+constantes con nombre, para no tener \emph{magic numbers} dispersos en el código.
+
+\begin{lstlisting}[caption={Cabecera e imports de \texttt{mcts\_tsla.py}}]
+"""
+mcts_tsla.py
+============
+Evaluacion de posicion en TSLA mediante Monte Carlo Tree Search.
+
+Estructura:
+  0. Cabecera y constantes globales
+  1. Action        -- espacio de acciones discretas
+  2. State         -- estado del entorno financiero
+  3. Node          -- nodo del arbol con UCB1
+  4. MCTS_Agent    -- motor MCTS (4 pasos clasicos + GBM rolling)
+  5. download_data -- descarga de datos con yfinance
+  6. Backtester    -- backtest walk-forward y metricas
+  7. Visualizer    -- 5 figuras representativas
+  8. print_metrics_table -- resumen en consola
+  9. save_report   -- reporte Markdown
+ 10. __main__      -- punto de entrada
+"""
+from __future__ import annotations
+
+import math
+import os
+import datetime
+from dataclasses import dataclass, field
+from enum import Enum, auto
+from typing import Optional
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from matplotlib.lines import Line2D
+from scipy import stats          # para Q-Q plot y VaR parametrico
+import yfinance as yf
+
+# -- Parametros globales (modificar aqui) -------------------------------------
+C_UCB:            float = math.sqrt(2)   # constante exploracion UCB1 (estandar)
+RISK_FREE_ANNUAL: float = 0.045          # tasa libre de riesgo anual (~T-bill)
+TICKER:           str   = "TSLA"
+PERIOD:           str   = "2y"           # periodo de descarga yfinance
+INITIAL_CASH:     float = 10_000.0       # capital inicial en USD
+RESULTS_DIR:      str   = "results_tsla" # directorio de salida
+\end{lstlisting}
+
+\begin{tcolorbox}[nota]
+  \texttt{scipy} se usa únicamente en la sección~7 para el Q-Q plot y el VaR
+  paramétrico. Si no está instalado, se puede eliminar ese panel concreto sin
+  afectar al resto del código.
+\end{tcolorbox}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Sección 1 --- Espacio de acciones (\texttt{class Action})}
+% ══════════════════════════════════════════════════════════════════════════════
+
+Se amplía de 3 a \textbf{5 acciones} respecto a \texttt{mcts\_trading.py}.
+Más granularidad permite al árbol expresar convicciones de distinta intensidad.
+
+\begin{lstlisting}[caption={Definicion del espacio de acciones}]
+class Action(Enum):
+    """Acciones disponibles en cada paso de decision del agente."""
+    BUY_25  = auto()   # invertir 25% del efectivo disponible
+    BUY_10  = auto()   # invertir 10% del efectivo disponible
+    HOLD    = auto()   # mantener posicion sin operar
+    SELL_10 = auto()   # vender 10% de las acciones en cartera
+    SELL_25 = auto()   # vender 25% de las acciones en cartera
+
+ACTIONS_ALL: list[Action] = list(Action)
+\end{lstlisting}
+
+\begin{tcolorbox}[clave]
+  El árbol MCTS tiene ahora \textbf{5 ramas posibles} en cada nodo. Con
+  \texttt{iterations=300}, cada acción recibe de media $\sim$60 visitas antes
+  de que se tome la decisión, suficiente para que UCB1 discrimine con fiabilidad
+  entre comprar fuerte, comprar ligero, mantener o vender.
+\end{tcolorbox}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Sección 2 --- Estado del entorno (\texttt{class State})}
+% ══════════════════════════════════════════════════════════════════════════════
+
+El estado es \emph{inmutable} (\texttt{frozen=True}) para que los nodos del
+árbol nunca compartan referencias accidentalmente.
+
+\begin{lstlisting}[caption={Clase \texttt{State} con coste de transacción y ratio de posición}]
+@dataclass(frozen=True)
+class State:
+    """
+    Estado completo del entorno financiero en un instante dado.
+
+    Attributes
+    ----------
+    day    : Indice del dia actual en la serie de precios.
+    cash   : Efectivo disponible (USD).
+    shares : Acciones en propiedad (puede ser fraccionario).
+    price  : Precio de cierre del activo en este dia.
+    """
+    day:    int
+    cash:   float
+    shares: float
+    price:  float
+
+    def portfolio_value(self) -> float:
+        """Valor total: efectivo + valor de mercado de las acciones."""
+        return self.cash + self.shares * self.price
+
+    def position_ratio(self) -> float:
+        """
+        Fraccion del portfolio invertida en el activo (0.0 - 1.0).
+        Es la metrica central de 'evaluacion de posicion'.
+        """
+        invested = self.shares * self.price
+        total    = self.portfolio_value()
+        return invested / (total + 1e-10)
+
+    def apply_action(
+        self,
+        action:     Action,
+        next_price: float,
+        tx_cost:    float = 0.001,   # 0.1% del capital operado
+    ) -> "State":
+        """
+        Aplica una accion, cobra coste de transaccion y avanza un dia.
+
+        Orden de eventos
+        ----------------
+        1. Calcular capital operado segun la accion.
+        2. Descontar coste de transaccion proporcional.
+        3. Actualizar cash y shares.
+        4. Devolver nuevo State con next_price y day+1.
+
+        Parameters
+        ----------
+        action     : Accion a ejecutar.
+        next_price : Precio del activo al dia siguiente.
+        tx_cost    : Fraccion del capital operado cobrada como comision.
+        """
+        cash, shares = self.cash, self.shares
+
+        if action == Action.BUY_25:
+            amount   = cash * 0.25
+            cost     = amount * tx_cost
+            shares  += (amount - cost) / self.price if self.price > 0 else 0.0
+            cash    -= amount
+
+        elif action == Action.BUY_10:
+            amount   = cash * 0.10
+            cost     = amount * tx_cost
+            shares  += (amount - cost) / self.price if self.price > 0 else 0.0
+            cash    -= amount
+
+        elif action == Action.SELL_10:
+            sold     = shares * 0.10
+            proceeds = sold * self.price
+            cost     = proceeds * tx_cost
+            shares  -= sold
+            cash    += proceeds - cost
+
+        elif action == Action.SELL_25:
+            sold     = shares * 0.25
+            proceeds = sold * self.price
+            cost     = proceeds * tx_cost
+            shares  -= sold
+            cash    += proceeds - cost
+
+        # HOLD: sin cambios
+
+        return State(
+            day=self.day + 1,
+            cash=max(cash, 0.0),
+            shares=max(shares, 0.0),
+            price=next_price,
+        )
+\end{lstlisting}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Sección 3 --- Nodo del árbol (\texttt{class Node})}
+% ══════════════════════════════════════════════════════════════════════════════
+
+Idéntico en estructura a \texttt{mcts\_trading.py}, con un atributo adicional
+\texttt{ucb\_trace} que registra el valor UCB1 en cada visita para poder
+graficar la convergencia del árbol (Figura~4).
+
+\begin{lstlisting}[caption={Clase \texttt{Node} con registro de convergencia UCB}]
+class Node:
+    """
+    Nodo del arbol de busqueda MCTS.
+
+    Attributes
+    ----------
+    state      : Estado del entorno en este nodo.
+    action     : Accion que llevo al padre a este nodo (None en la raiz).
+    parent     : Nodo padre.
+    children   : Nodos hijo ya expandidos.
+    n          : Visitas totales a este nodo.
+    w          : Recompensa acumulada (suma de todos los rollouts).
+    ucb_trace  : Lista con el valor UCB1 registrado en cada visita.
+                 Usado para el grafico de convergencia (Figura 4).
+    """
+
+    def __init__(
+        self,
+        state:  State,
+        action: Optional[Action] = None,
+        parent: Optional["Node"] = None,
+    ) -> None:
+        self.state:     State            = state
+        self.action:    Optional[Action] = action
+        self.parent:    Optional["Node"] = parent
+        self.children:  list["Node"]     = []
+        self.n:         int              = 0
+        self.w:         float            = 0.0
+        self.ucb_trace: list[float]      = []   # NUEVO: historial de UCB1
+
+    def ucb1(self, c: float = C_UCB) -> float:
+        """
+        Valor UCT del nodo.
+            UCT_i = w_i/n_i  +  c * sqrt(ln(N_padre) / n_i)
+        Devuelve +inf si n=0 (garantiza exploracion inicial).
+        """
+        if self.n == 0:
+            return math.inf
+        expl = self.w / self.n
+        if self.parent is None or self.parent.n == 0:
+            return expl
+        return expl + c * math.sqrt(math.log(self.parent.n) / self.n)
+
+    def best_child(self, c: float = C_UCB) -> "Node":
+        return max(self.children, key=lambda ch: ch.ucb1(c))
+
+    def tried_actions(self) -> set[Action]:
+        return {ch.action for ch in self.children if ch.action is not None}
+
+    def untried_actions(self) -> list[Action]:
+        tried = self.tried_actions()
+        return [a for a in ACTIONS_ALL if a not in tried]
+
+    def is_fully_expanded(self) -> bool:
+        return len(self.untried_actions()) == 0
+
+    def add_child(self, action: Action, state: State) -> "Node":
+        child = Node(state=state, action=action, parent=self)
+        self.children.append(child)
+        return child
+\end{lstlisting}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Sección 4 --- Motor MCTS (\texttt{class MCTS\_Agent})}
+% ══════════════════════════════════════════════════════════════════════════════
+
+Esta es la sección central. Implementa los \textbf{4 pasos clásicos} con dos
+mejoras clave sobre \texttt{mcts\_trading.py}:
+
+\begin{enumerate}
+  \item \textbf{Calibración rolling}: $\mu$ y $\sigma$ se estiman con los últimos
+        \texttt{window} días, no con toda la serie.
+  \item \textbf{Sin lookback bias}: la expansión usa un precio GBM simulado,
+        no el precio histórico real del día siguiente.
+\end{enumerate}
+
+\begin{lstlisting}[caption={Clase \texttt{MCTS\_Agent} -- constructor y calibración}]
+class MCTS_Agent:
+    """
+    Agente MCTS para decisiones de trading sobre un activo.
+
+    Mejoras sobre mcts_trading.py
+    ------------------------------
+    - Rollout GBM con calibracion rolling (mu, sigma de ventana movil).
+    - Recompensa = log-retorno medio (mas estable numericamente).
+    - Sin lookback bias en la expansion.
+    - iter_rewards: lista de recompensas por iteracion para grafico.
+    """
+
+    def __init__(
+        self,
+        prices:       np.ndarray,
+        iterations:   int   = 300,
+        rollout_days: int   = 20,
+        window:       int   = 40,
+        c_ucb:        float = C_UCB,
+        tx_cost:      float = 0.001,
+        rng_seed:     int   = 42,
+    ) -> None:
+        self.prices       = prices
+        self.iterations   = iterations
+        self.rollout_days = rollout_days
+        self.window       = window
+        self.c_ucb        = c_ucb
+        self.tx_cost      = tx_cost
+        self.rng          = np.random.default_rng(rng_seed)
+
+    def _calibrate(self, day: int) -> tuple[float, float]:
+        """
+        Estima mu (drift diario) y sigma (volatilidad diaria)
+        con una ventana rolling de `self.window` dias.
+
+        Returns
+        -------
+        (mu_daily, sigma_daily) -- ambos en escala diaria.
+        """
+        start = max(0, day - self.window)
+        end   = min(day + 1, len(self.prices))
+        win   = self.prices[start:end]
+
+        if len(win) >= 3:
+            log_ret = np.diff(np.log(win))
+            mu      = float(np.mean(log_ret))
+            sigma   = float(np.std(log_ret, ddof=1)) + 1e-8
+        else:
+            mu, sigma = 0.0, 0.01
+
+        return mu, sigma
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Pasos 1 y 2 -- Seleccion y Expansion (sin lookback bias)}]
+    # -- Paso 1: Seleccion ----------------------------------------------------
+
+    def _select(self, node: Node) -> Node:
+        """Navega el arbol con UCB1 hasta un nodo no expandido."""
+        current = node
+        while current.is_fully_expanded() and current.children:
+            current = current.best_child(self.c_ucb)
+        return current
+
+    # -- Paso 2: Expansion (sin lookback bias) --------------------------------
+
+    def _expand(self, node: Node) -> Node:
+        """
+        Crea un hijo para una accion no probada.
+
+        Para evitar lookback bias, el precio del siguiente dia se simula
+        con un paso GBM calibrado -- no se usa el precio historico real.
+        """
+        untried = node.untried_actions()
+        action  = self.rng.choice(untried)   # type: ignore[arg-type]
+
+        day        = node.state.day
+        mu, sigma  = self._calibrate(day)
+        mu_ann     = mu * 252
+        sigma_ann  = sigma * math.sqrt(252)
+
+        T          = 1.0 / 252.0             # 1 dia en anos
+        z          = self.rng.standard_normal()
+        log_ret    = (mu_ann - 0.5 * sigma_ann**2) * T + sigma_ann * math.sqrt(T) * z
+        next_price = float(node.state.price * math.exp(log_ret))
+        next_price = max(next_price, 0.01)   # precio siempre positivo
+
+        new_state  = node.state.apply_action(action, next_price, self.tx_cost)
+        return node.add_child(action, new_state)
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Paso 3 -- Rollout GBM exacto con 50 trayectorias}]
+    # -- Paso 3: Rollout (simulacion GBM exacta) ------------------------------
+
+    def _rollout(self, node: Node) -> float:
+        """
+        Estima el log-retorno de la cartera con GBM exacto.
+
+        Modelo (solucion analitica, sin error de discretizacion):
+            S_T = S_0 * exp((mu - sigma^2/2)*T + sigma*sqrt(T)*Z)
+            Z ~ N(0,1)
+
+        Se simulan N_PATHS trayectorias en paralelo y se promedia,
+        lo que reduce la varianza del estimador Monte Carlo.
+
+        Recompensa = log-retorno medio de la cartera al horizonte.
+        (mas estable numericamente que el valor absoluto)
+        """
+        N_PATHS = 50
+        state   = node.state
+        S0      = state.price
+        day     = state.day
+
+        mu, sigma  = self._calibrate(day)
+        mu_ann     = mu * 252
+        sigma_ann  = sigma * math.sqrt(252)
+        T          = self.rollout_days / 252.0
+
+        Z   = self.rng.standard_normal(N_PATHS)
+        S_T = S0 * np.exp(
+            (mu_ann - 0.5 * sigma_ann**2) * T
+            + sigma_ann * math.sqrt(T) * Z
+        )
+
+        # Valor de la cartera al horizonte en cada trayectoria
+        port_values = state.cash + state.shares * S_T
+        port_values = np.maximum(port_values, 1e-6)
+
+        # Log-retorno medio como recompensa
+        pv0         = state.portfolio_value()
+        log_returns = np.log(port_values / (pv0 + 1e-10))
+        return float(np.mean(log_returns))
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Paso 4 y bucle principal del MCTS}]
+    # -- Paso 4: Retropropagacion ---------------------------------------------
+
+    def _backpropagate(self, node: Node, reward: float) -> None:
+        """Propaga la recompensa hacia la raiz actualizando n y w."""
+        current: Optional[Node] = node
+        while current is not None:
+            current.n += 1
+            current.w += reward
+            # Registrar UCB1 en el historial del nodo hijo de la raiz
+            if current.parent is not None and current.parent.parent is None:
+                current.ucb_trace.append(current.ucb1(self.c_ucb))
+            current = current.parent
+
+    # -- Bucle principal -------------------------------------------------------
+
+    def run(self, root_state: State) -> tuple[Node, list[float]]:
+        """
+        Ejecuta `self.iterations` ciclos MCTS.
+
+        Returns
+        -------
+        root         : Raiz del arbol construido.
+        iter_rewards : Recompensa de cada rollout (para grafico convergencia).
+        """
+        root         = Node(state=root_state)
+        iter_rewards: list[float] = []
+
+        for _ in range(self.iterations):
+            leaf   = self._select(root)
+            if not leaf.is_fully_expanded():
+                leaf = self._expand(leaf)
+            reward = self._rollout(leaf)
+            self._backpropagate(leaf, reward)
+            iter_rewards.append(reward)
+
+        return root, iter_rewards
+
+    def best_action(self, root: Node) -> Action:
+        """Accion optima: hijo con mayor Q media (c=0, explotacion pura)."""
+        if not root.children:
+            return Action.HOLD
+        best = root.best_child(c=0.0)
+        return best.action if best.action is not None else Action.HOLD
+\end{lstlisting}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Sección 5 --- Descarga de datos (\texttt{download\_data})}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{lstlisting}[caption={Descarga de precios con yfinance}]
+def download_data(
+    ticker: str = TICKER,
+    period: str = PERIOD,
+) -> tuple[np.ndarray, pd.DatetimeIndex]:
+    """
+    Descarga precios de cierre ajustados.
+
+    Returns
+    -------
+    prices : np.ndarray shape (T,)   -- precios de cierre cronologicos.
+    dates  : pd.DatetimeIndex (T,)   -- fechas correspondientes.
+
+    Raises
+    ------
+    ValueError si yfinance no devuelve datos para el ticker.
+    """
+    print(f"[INFO] Descargando {ticker} ({period})...")
+    df = yf.download(ticker, period=period, progress=False, auto_adjust=True)
+
+    if df.empty:
+        raise ValueError(f"Sin datos para '{ticker}'.")
+
+    prices = df["Close"].dropna().to_numpy(dtype=float).flatten()
+    dates  = df["Close"].dropna().index
+
+    print(f"[INFO] {len(prices)} sesiones. "
+          f"Rango: {dates[0].date()} a {dates[-1].date()}. "
+          f"Precio actual: {prices[-1]:.2f} $")
+    return prices, dates
+\end{lstlisting}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Sección 6 --- Backtester (\texttt{class Backtester})}
+% ══════════════════════════════════════════════════════════════════════════════
+
+El \texttt{Backtester} ejecuta el agente MCTS en modo \emph{walk-forward}
+(sin mirar el futuro), registrando toda la información necesaria para las
+visualizaciones.
+
+\begin{lstlisting}[caption={Constructor y metodo \texttt{run()} del Backtester}]
+class Backtester:
+    """
+    Evaluacion walk-forward del agente MCTS sobre datos historicos.
+    Compara con Buy & Hold. Registra todo lo necesario para Visualizer.
+    """
+
+    def __init__(
+        self,
+        mcts_iterations: int   = 300,
+        rollout_days:    int   = 20,
+        window:          int   = 40,
+        c_ucb:           float = C_UCB,
+        tx_cost:         float = 0.001,
+        rng_seed:        int   = 42,
+    ) -> None:
+        self.mcts_iterations = mcts_iterations
+        self.rollout_days    = rollout_days
+        self.window          = window
+        self.c_ucb           = c_ucb
+        self.tx_cost         = tx_cost
+        self.rng_seed        = rng_seed
+
+    def run(
+        self,
+        prices:       np.ndarray,
+        dates:        pd.DatetimeIndex,
+        initial_cash: float = INITIAL_CASH,
+    ) -> dict:
+        """
+        Backtest completo. Devuelve un diccionario con todas las series
+        temporales y estructuras necesarias para las visualizaciones.
+
+        Campos del diccionario devuelto
+        --------------------------------
+        portfolio_series   list[float]       valor cartera MCTS cada dia
+        bah_series         list[float]       valor Buy & Hold cada dia
+        actions            list[Action]      accion tomada en cada dia
+        position_ratios    list[float]       % invertido en TSLA cada dia
+        iter_rewards_last  list[float]       recompensas por iteracion (ultimo dia)
+        ucb_root_last      Node              raiz del arbol del ultimo dia
+        gbm_paths_last     np.ndarray (50,T) trayectorias GBM del ultimo dia
+        dates              pd.DatetimeIndex  fechas de la serie
+        initial_cash       float
+        """
+        agent = MCTS_Agent(
+            prices       = prices,
+            iterations   = self.mcts_iterations,
+            rollout_days = self.rollout_days,
+            window       = self.window,
+            c_ucb        = self.c_ucb,
+            tx_cost      = self.tx_cost,
+            rng_seed     = self.rng_seed,
+        )
+
+        state = State(day=0, cash=initial_cash, shares=0.0,
+                      price=float(prices[0]))
+
+        portfolio_series: list[float]  = [initial_cash]
+        actions:          list[Action] = []
+        position_ratios:  list[float]  = [0.0]
+        iter_rewards_last: list[float] = []
+        ucb_root_last: Optional[Node]  = None
+
+        for day in range(len(prices) - 1):
+            state = State(day=day,
+                          cash=portfolio_series[-1] * (1 - position_ratios[-1]),
+                          shares=portfolio_series[-1] * position_ratios[-1]
+                                 / float(prices[day]),
+                          price=float(prices[day]))
+
+            root, iter_rewards = agent.run(state)
+            action             = agent.best_action(root)
+            actions.append(action)
+
+            next_price = float(prices[day + 1])
+            state      = state.apply_action(action, next_price, self.tx_cost)
+
+            portfolio_series.append(state.portfolio_value())
+            position_ratios.append(state.position_ratio())
+
+            # Guardar el estado del ultimo dia para las visualizaciones
+            if day == len(prices) - 2:
+                iter_rewards_last = iter_rewards
+                ucb_root_last     = root
+                # Generar trayectorias GBM del ultimo dia para Figura 5
+                gbm_paths_last = agent._simulate_paths(state, prices)
+
+            pct = (day + 1) / (len(prices) - 1) * 100
+            print(f"\r[MCTS] {day+1}/{len(prices)-1} ({pct:.0f}%)  "
+                  f"Cartera: {state.portfolio_value():>10,.0f}$  "
+                  f"Accion: {action.name:<8}", end="", flush=True)
+        print()
+
+        # Buy & Hold
+        shares_bah = initial_cash / prices[0]
+        bah_series = [float(shares_bah * p) for p in prices]
+
+        return {
+            "portfolio_series":   portfolio_series,
+            "bah_series":         bah_series,
+            "actions":            actions,
+            "position_ratios":    position_ratios,
+            "iter_rewards_last":  iter_rewards_last,
+            "ucb_root_last":      ucb_root_last,
+            "gbm_paths_last":     gbm_paths_last,
+            "dates":              dates,
+            "initial_cash":       initial_cash,
+        }
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Metodo \texttt{compute\_metrics()} -- métricas extendidas de riesgo}]
+    @staticmethod
+    def compute_metrics(
+        portfolio_series: list[float],
+        label:            str   = "",
+        risk_free:        float = RISK_FREE_ANNUAL,
+    ) -> dict:
+        """
+        Calcula el conjunto completo de metricas financieras.
+
+        Metricas devueltas
+        ------------------
+        roi        : Retorno total acumulado (fraccion).
+        cagr       : Retorno anual compuesto (fraccion).
+        sharpe     : Ratio de Sharpe anualizado.
+        sortino    : Ratio de Sortino anualizado (solo vol. negativa).
+        max_dd     : Maximo Drawdown (fraccion negativa).
+        calmar     : CAGR / |Max Drawdown| (ratio riesgo-retorno largo plazo).
+        var_95     : Value at Risk 95% diario parametrico (fraccion).
+        cvar_95    : Expected Shortfall 95% (media de perdidas > VaR).
+        final      : Valor final de la cartera.
+        """
+        arr    = np.array(portfolio_series, dtype=float)
+        ret    = np.diff(arr) / arr[:-1]          # retornos diarios
+        rf_d   = risk_free / 252                  # tasa libre de riesgo diaria
+
+        # Retorno y CAGR
+        roi    = float((arr[-1] - arr[0]) / arr[0])
+        n_days = len(arr)
+        cagr   = float((arr[-1] / arr[0]) ** (252 / n_days) - 1)
+
+        # Sharpe
+        mean_r = float(np.mean(ret))
+        std_r  = float(np.std(ret, ddof=1)) + 1e-10
+        sharpe = (mean_r - rf_d) / std_r * math.sqrt(252)
+
+        # Sortino (solo volatilidad a la baja)
+        neg     = ret[ret < rf_d]
+        down_std = float(np.std(neg, ddof=1)) + 1e-10 if len(neg) > 1 else std_r
+        sortino  = (mean_r - rf_d) / down_std * math.sqrt(252)
+
+        # Maximo Drawdown
+        peak   = np.maximum.accumulate(arr)
+        dd     = (arr - peak) / peak
+        max_dd = float(np.min(dd))
+
+        # Calmar
+        calmar = cagr / abs(max_dd) if max_dd != 0 else float("inf")
+
+        # VaR y CVaR 95% parametrico (distribucion normal)
+        z95    = stats.norm.ppf(0.05)
+        var_95 = float(mean_r + z95 * std_r)
+        cvar_mask = ret <= var_95
+        cvar_95   = float(np.mean(ret[cvar_mask])) if cvar_mask.any() else var_95
+
+        return {
+            "label":   label,
+            "roi":     roi,
+            "cagr":    cagr,
+            "sharpe":  sharpe,
+            "sortino": sortino,
+            "max_dd":  max_dd,
+            "calmar":  calmar,
+            "var_95":  var_95,
+            "cvar_95": cvar_95,
+            "final":   float(arr[-1]),
+        }
+\end{lstlisting}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Sección 7 --- Visualizaciones (\texttt{class Visualizer})}
+% ══════════════════════════════════════════════════════════════════════════════
+
+Se generan \textbf{5 figuras independientes}, cada una guardada como
+\texttt{.png} de 150 dpi en \texttt{RESULTS\_DIR}.
+
+\subsection{Figura 1 --- Precio, señales MCTS y ratio de posición}
+
+\begin{tcolorbox}[figura, title={Fig.\ 1: \texttt{fig1\_signals.png}}]
+\begin{itemize}\small
+  \item \textbf{Panel superior (60\%)}: Precio de TSLA con marcadores de acción
+        superpuestos ($\blacktriangle$ verde=BUY, $\blacktriangledown$ rojo=SELL,
+        $\bullet$ azul=HOLD). Incluye media móvil de 20 sesiones.
+  \item \textbf{Panel inferior (40\%)}: Ratio de posición ($\%$ del portfolio
+        invertido en TSLA) como área rellena azul. Permite ver si el agente
+        acumula o reduce exposición a lo largo del tiempo.
+\end{itemize}
+\textbf{Qué muestra}: la señal MCTS en contexto del precio y el nivel de
+exposición resultante.
+\end{tcolorbox}
+
+\begin{lstlisting}[caption={Figura 1 -- senales y ratio de posicion}]
+class Visualizer:
+    """Genera las 5 figuras del analisis MCTS."""
+
+    ACTION_COLORS = {
+        Action.BUY_25:  "#1a7a1a",  # verde oscuro
+        Action.BUY_10:  "#2ecc71",  # verde claro
+        Action.HOLD:    "#3498db",  # azul
+        Action.SELL_10: "#e74c3c",  # rojo claro
+        Action.SELL_25: "#8e0000",  # rojo oscuro
+    }
+    ACTION_MARKERS = {
+        Action.BUY_25:  "^",
+        Action.BUY_10:  "^",
+        Action.HOLD:    ".",
+        Action.SELL_10: "v",
+        Action.SELL_25: "v",
+    }
+
+    def __init__(self, results: dict, prices: np.ndarray,
+                 dates: pd.DatetimeIndex, ticker: str,
+                 output_dir: str = RESULTS_DIR) -> None:
+        self.results    = results
+        self.prices     = prices
+        self.dates      = dates
+        self.ticker     = ticker
+        self.output_dir = output_dir
+        os.makedirs(output_dir, exist_ok=True)
+
+    def plot_signals(self) -> None:
+        """Fig 1: precio con senales MCTS + ratio de posicion."""
+        actions  = self.results["actions"]
+        pos_rat  = self.results["position_ratios"]
+
+        fig, (ax1, ax2) = plt.subplots(
+            2, 1, figsize=(14, 8),
+            gridspec_kw={"height_ratios": [3, 2]},
+            sharex=True,
+        )
+        fig.suptitle(
+            f"MCTS Trading -- Senales sobre {self.ticker}",
+            fontsize=13, fontweight="bold",
+        )
+
+        # Panel 1: Precio + senales + MA20
+        ax1.plot(self.dates, self.prices, color="#2c3e50",
+                 lw=1.4, label=f"Precio {self.ticker}", zorder=2)
+        ma20 = pd.Series(self.prices).rolling(20).mean().values
+        ax1.plot(self.dates, ma20, color="#e67e22", lw=1.0,
+                 ls="--", alpha=0.8, label="MA 20d")
+
+        for i, action in enumerate(actions):
+            ax1.scatter(self.dates[i], self.prices[i],
+                        color=self.ACTION_COLORS[action],
+                        marker=self.ACTION_MARKERS[action],
+                        s=18, zorder=3, alpha=0.7)
+
+        legend_elements = [
+            Line2D([0],[0], marker="^", color="w",
+                   markerfacecolor="#1a7a1a", markersize=8, label="BUY 25%"),
+            Line2D([0],[0], marker="^", color="w",
+                   markerfacecolor="#2ecc71", markersize=8, label="BUY 10%"),
+            Line2D([0],[0], marker=".", color="w",
+                   markerfacecolor="#3498db", markersize=8, label="HOLD"),
+            Line2D([0],[0], marker="v", color="w",
+                   markerfacecolor="#e74c3c", markersize=8, label="SELL 10%"),
+            Line2D([0],[0], marker="v", color="w",
+                   markerfacecolor="#8e0000", markersize=8, label="SELL 25%"),
+        ]
+        ax1.legend(handles=legend_elements, fontsize=8, loc="upper left")
+        ax1.set_ylabel(f"Precio {self.ticker} [$]")
+        ax1.grid(alpha=0.3)
+
+        # Panel 2: Ratio de posicion
+        ax2.fill_between(self.dates, pos_rat,
+                         color="#3498db", alpha=0.4, label="% en TSLA")
+        ax2.plot(self.dates, pos_rat, color="#2980b9", lw=1.0)
+        ax2.set_ylim(0, 1.05)
+        ax2.set_ylabel("Ratio de posicion")
+        ax2.set_xlabel("Fecha")
+        ax2.legend(fontsize=9)
+        ax2.grid(alpha=0.3)
+
+        plt.tight_layout()
+        path = os.path.join(self.output_dir, "fig1_signals.png")
+        plt.savefig(path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"[OK] {path}")
+\end{lstlisting}
+
+\subsection{Figura 2 --- Evolución del portafolio y drawdown}
+
+\begin{tcolorbox}[figura, title={Fig.\ 2: \texttt{fig2\_performance.png}}]
+\begin{itemize}\small
+  \item \textbf{Panel superior (55\%)}: Valor normalizado (base 100) del
+        portafolio MCTS y Buy\,\&\,Hold con línea de referencia a 100.
+  \item \textbf{Panel inferior (45\%)}: Drawdown (\%) del portafolio MCTS
+        (área roja rellena) y de B\&H (línea punteada naranja).
+\end{itemize}
+\textbf{Qué muestra}: comparación directa de performance y resistencia a caídas.
+\end{tcolorbox}
+
+\begin{lstlisting}[caption={Figura 2 -- performance y drawdown}]
+    def plot_performance(self) -> None:
+        """Fig 2: evolución de cartera (base 100) + drawdown."""
+        pv  = np.array(self.results["portfolio_series"])
+        bah = np.array(self.results["bah_series"])
+        b   = pv[0]
+        pv_n  = pv  / b * 100
+        bah_n = bah / b * 100
+
+        fig, (ax1, ax2) = plt.subplots(
+            2, 1, figsize=(14, 8),
+            gridspec_kw={"height_ratios": [11, 9]},
+            sharex=True,
+        )
+        fig.suptitle(
+            f"Evolucion del portafolio -- MCTS vs Buy & Hold ({self.ticker})",
+            fontsize=13, fontweight="bold",
+        )
+
+        # Panel 1: valor normalizado
+        ax1.plot(self.dates, pv_n,  lw=2.0, color="#1f77b4",
+                 label="MCTS Agent", zorder=3)
+        ax1.plot(self.dates, bah_n, lw=1.5, color="#ff7f0e",
+                 ls="--", label="Buy & Hold")
+        ax1.axhline(100, color="gray", lw=0.8, ls=":")
+        ax1.set_ylabel("Valor (base 100)")
+        ax1.legend(fontsize=10)
+        ax1.grid(alpha=0.3)
+
+        # Panel 2: drawdown
+        peak_mcts = np.maximum.accumulate(pv)
+        dd_mcts   = (pv - peak_mcts) / peak_mcts * 100
+        peak_bah  = np.maximum.accumulate(bah)
+        dd_bah    = (bah - peak_bah) / peak_bah * 100
+        ax2.fill_between(self.dates, dd_mcts, 0,
+                         color="#d62728", alpha=0.5, label="DD MCTS")
+        ax2.plot(self.dates, dd_bah, color="#ff7f0e",
+                 lw=1.0, ls="--", alpha=0.8, label="DD B&H")
+        ax2.set_ylabel("Drawdown (%)")
+        ax2.set_xlabel("Fecha")
+        ax2.legend(fontsize=9)
+        ax2.grid(alpha=0.3)
+
+        plt.tight_layout()
+        path = os.path.join(self.output_dir, "fig2_performance.png")
+        plt.savefig(path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"[OK] {path}")
+\end{lstlisting}
+
+\subsection{Figura 3 --- Distribución de retornos y rolling Sharpe}
+
+\begin{tcolorbox}[figura, title={Fig.\ 3: \texttt{fig3\_returns.png}}]
+\begin{itemize}\small
+  \item \textbf{Panel izquierdo superior}: Histograma de retornos diarios MCTS
+        vs B\&H con curva normal ajustada. Permite detectar asimetría (skewness)
+        y colas gruesas (kurtosis).
+  \item \textbf{Panel derecho superior}: Q-Q plot de los retornos MCTS contra la
+        distribución normal teórica.
+  \item \textbf{Panel inferior (fila completa)}: Rolling Sharpe de 30 días para
+        MCTS y B\&H. Muestra en qué períodos el agente fue más eficiente.
+\end{itemize}
+\end{tcolorbox}
+
+\begin{lstlisting}[caption={Figura 3 -- retornos y rolling Sharpe}]
+    def plot_returns(self) -> None:
+        """Fig 3: histograma, Q-Q plot y rolling Sharpe."""
+        pv  = np.array(self.results["portfolio_series"])
+        bah = np.array(self.results["bah_series"])
+        ret_mcts = np.diff(pv)  / pv[:-1]
+        ret_bah  = np.diff(bah) / bah[:-1]
+
+        fig = plt.figure(figsize=(14, 9))
+        fig.suptitle(f"Analisis de retornos -- {self.ticker}",
+                     fontsize=13, fontweight="bold")
+        gs = gridspec.GridSpec(2, 2, hspace=0.42, wspace=0.32)
+
+        # Panel 1: histograma
+        ax1 = fig.add_subplot(gs[0, 0])
+        bins = 50
+        ax1.hist(ret_mcts, bins=bins, density=True, alpha=0.6,
+                 color="#1f77b4", label="MCTS")
+        ax1.hist(ret_bah, bins=bins, density=True, alpha=0.4,
+                 color="#ff7f0e", label="B&H")
+        # Curva normal ajustada a MCTS
+        mu_r, s_r = float(np.mean(ret_mcts)), float(np.std(ret_mcts))
+        xs = np.linspace(ret_mcts.min(), ret_mcts.max(), 200)
+        ax1.plot(xs, stats.norm.pdf(xs, mu_r, s_r),
+                 "k--", lw=1.2, label="Normal fit")
+        ax1.set_title("Distribucion de retornos diarios")
+        ax1.set_xlabel("Retorno diario")
+        ax1.legend(fontsize=8)
+        ax1.grid(alpha=0.3)
+
+        # Panel 2: Q-Q plot
+        ax2 = fig.add_subplot(gs[0, 1])
+        (osm, osr), (slope, intercept, _) = stats.probplot(ret_mcts)
+        ax2.scatter(osm, osr, s=6, color="#1f77b4", alpha=0.6)
+        ax2.plot(osm, slope * np.array(osm) + intercept,
+                 "r--", lw=1.2, label="Recta normal")
+        ax2.set_title("Q-Q plot retornos MCTS")
+        ax2.set_xlabel("Cuantiles teoricos")
+        ax2.set_ylabel("Cuantiles observados")
+        ax2.legend(fontsize=8)
+        ax2.grid(alpha=0.3)
+
+        # Panel 3: rolling Sharpe 30d
+        ax3 = fig.add_subplot(gs[1, :])
+        rf_d = RISK_FREE_ANNUAL / 252
+        window_sh = 30
+
+        def rolling_sharpe(ret_arr, w):
+            result = [np.nan] * (w - 1)
+            for i in range(w - 1, len(ret_arr)):
+                r = ret_arr[i - w + 1: i + 1]
+                s = (np.mean(r) - rf_d) / (np.std(r, ddof=1) + 1e-10)
+                result.append(s * math.sqrt(252))
+            return result
+
+        rs_mcts = rolling_sharpe(ret_mcts, window_sh)
+        rs_bah  = rolling_sharpe(ret_bah,  window_sh)
+        d_roll  = self.dates[1:]  # retornos tienen T-1 puntos
+
+        ax3.plot(d_roll, rs_mcts, lw=1.4, color="#1f77b4", label="MCTS")
+        ax3.plot(d_roll, rs_bah,  lw=1.0, color="#ff7f0e",
+                 ls="--", label="B&H")
+        ax3.axhline(0, color="gray", lw=0.8, ls=":")
+        ax3.fill_between(d_roll, rs_mcts, 0,
+                         where=np.array(rs_mcts) > 0,
+                         color="#1f77b4", alpha=0.15)
+        ax3.set_title(f"Sharpe rodante ({window_sh}d)")
+        ax3.set_ylabel("Sharpe anualizado")
+        ax3.set_xlabel("Fecha")
+        ax3.legend(fontsize=9)
+        ax3.grid(alpha=0.3)
+
+        plt.tight_layout()
+        path = os.path.join(self.output_dir, "fig3_returns.png")
+        plt.savefig(path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"[OK] {path}")
+\end{lstlisting}
+
+\subsection{Figura 4 --- Árbol MCTS y convergencia UCB}
+
+\begin{tcolorbox}[figura, title={Fig.\ 4: \texttt{fig4\_tree.png}}]
+\begin{itemize}\small
+  \item \textbf{Panel izquierdo}: Árbol de decisión MCTS del último día evaluado
+        (profundidad 3). Los nodos se colorean por acción y muestran
+        $n$ (visitas) y $\bar{w}$ (recompensa media).
+  \item \textbf{Panel derecho superior}: Recompensa media acumulada por iteración
+        ($\overline{w}_k = \frac{1}{k}\sum_{i=1}^k r_i$). Muestra si el árbol
+        convergió.
+  \item \textbf{Panel derecho inferior}: Distribución de acciones por mes
+        (barras apiladas \%).
+\end{itemize}
+\end{tcolorbox}
+
+\begin{lstlisting}[caption={Figura 4 -- arbol MCTS y analisis de convergencia}]
+    def plot_mcts_tree(self) -> None:
+        """Fig 4: arbol de decision + convergencia UCB + acciones por mes."""
+        root         = self.results["ucb_root_last"]
+        iter_rewards = self.results["iter_rewards_last"]
+        actions      = self.results["actions"]
+
+        fig = plt.figure(figsize=(16, 9))
+        fig.suptitle(f"Interior del arbol MCTS -- {self.ticker}",
+                     fontsize=13, fontweight="bold")
+        gs = gridspec.GridSpec(2, 2, hspace=0.45, wspace=0.35)
+
+        # Panel 1 (columna izquierda, toda la altura): arbol
+        ax1 = fig.add_subplot(gs[:, 0])
+        ax1.axis("off")
+        ax1.set_title("Arbol de decisiones (profundidad 3)", fontsize=10)
+        self._draw_tree(ax1, root, max_depth=3)
+
+        # Panel 2 (derecha arriba): convergencia
+        ax2 = fig.add_subplot(gs[0, 1])
+        cumul = np.cumsum(iter_rewards) / (np.arange(len(iter_rewards)) + 1)
+        ax2.plot(range(1, len(cumul) + 1), cumul,
+                 color="#8e44ad", lw=1.5)
+        ax2.set_title("Convergencia UCB (recompensa media acumulada)")
+        ax2.set_xlabel("Iteracion MCTS")
+        ax2.set_ylabel(r"$\bar{w}_k$")
+        ax2.grid(alpha=0.3)
+
+        # Panel 3 (derecha abajo): acciones por mes
+        ax3 = fig.add_subplot(gs[1, 1])
+        dates_act = pd.DatetimeIndex(self.dates[:len(actions)])
+        df_act = pd.DataFrame(
+            {"month": dates_act.to_period("M"),
+             "action": [a.name for a in actions]}
+        )
+        counts = (df_act.groupby(["month", "action"])
+                  .size().unstack(fill_value=0))
+        counts_pct = counts.div(counts.sum(axis=1), axis=0) * 100
+
+        colors_act = {
+            "BUY_25": "#1a7a1a", "BUY_10": "#2ecc71",
+            "HOLD":   "#3498db",
+            "SELL_10":"#e74c3c", "SELL_25":"#8e0000",
+        }
+        bottom = np.zeros(len(counts_pct))
+        for col in ["BUY_25", "BUY_10", "HOLD", "SELL_10", "SELL_25"]:
+            if col in counts_pct.columns:
+                vals = counts_pct[col].values
+                ax3.bar(range(len(counts_pct)), vals, bottom=bottom,
+                        color=colors_act[col], label=col, alpha=0.85)
+                bottom += vals
+        ax3.set_title("Distribucion de acciones por mes (%)")
+        ax3.set_ylabel("%")
+        ax3.set_xticks(range(len(counts_pct)))
+        ax3.set_xticklabels(
+            [str(p) for p in counts_pct.index],
+            rotation=45, ha="right", fontsize=7,
+        )
+        ax3.legend(fontsize=7, loc="upper right")
+
+        plt.tight_layout()
+        path = os.path.join(self.output_dir, "fig4_tree.png")
+        plt.savefig(path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"[OK] {path}")
+
+    def _draw_tree(self, ax, node: Node, max_depth: int = 3) -> None:
+        """Dibuja el arbol MCTS recursivamente en los ejes ax."""
+        ACTION_COLORS = {
+            Action.BUY_25:  "#1a7a1a", Action.BUY_10:  "#2ecc71",
+            Action.HOLD:    "#3498db",
+            Action.SELL_10: "#e74c3c", Action.SELL_25: "#8e0000",
+            None:           "#95a5a6",
+        }
+        def _draw(node, x, y, dx, depth):
+            if depth > max_depth:
+                return
+            mean_r = node.w / node.n if node.n > 0 else 0.0
+            label  = (
+                f"{node.action.name if node.action else 'ROOT'}\n"
+                f"n={node.n}  w={mean_r:.3f}"
+            )
+            color = ACTION_COLORS.get(node.action, "#95a5a6")
+            ax.text(x, y, label, ha="center", va="center", fontsize=7,
+                    bbox=dict(boxstyle="round,pad=0.35",
+                              facecolor=color, alpha=0.85, edgecolor="gray"))
+            n_ch = len(node.children)
+            if n_ch == 0:
+                return
+            child_dx = dx / max(n_ch, 1)
+            x_start  = x - dx / 2 + child_dx / 2
+            for i, child in enumerate(node.children):
+                cx, cy = x_start + i * child_dx, y - 1.4
+                ax.annotate("", xy=(cx, cy + 0.3), xytext=(x, y - 0.3),
+                            arrowprops=dict(arrowstyle="->",
+                                           color="gray", lw=0.9))
+                _draw(child, cx, cy, child_dx, depth + 1)
+
+        _draw(node, x=0.5, y=max_depth * 1.4, dx=1.0, depth=0)
+\end{lstlisting}
+
+\subsection{Figura 5 --- Trayectorias GBM del rollout}
+
+\begin{tcolorbox}[figura, title={Fig.\ 5: \texttt{fig5\_gbm\_paths.png}}]
+\begin{itemize}\small
+  \item \textbf{Panel único}: 50 trayectorias GBM simuladas desde el precio
+        actual de TSLA al horizonte \texttt{rollout\_days}.
+        Se muestran: media de la simulación, banda $\pm 1\sigma$,
+        percentiles 5\% y 95\%, y la línea de precio actual.
+\end{itemize}
+\textbf{Qué muestra}: la distribución de precios futuros que el agente
+usa internamente en el rollout del último día evaluado.
+\end{tcolorbox}
+
+\begin{lstlisting}[caption={Figura 5 -- visualizacion de trayectorias GBM}]
+    def plot_gbm_paths(self) -> None:
+        """Fig 5: trayectorias GBM del rollout (ultimo dia)."""
+        paths      = self.results["gbm_paths_last"]  # shape (N_PATHS, rollout_days)
+        S0         = float(self.prices[-1])
+        n_days_sim = paths.shape[1]
+        t_axis     = np.arange(n_days_sim + 1)
+        # Prefijo con el precio actual
+        full = np.hstack([np.full((paths.shape[0], 1), S0), paths])
+
+        mean_path = np.mean(full, axis=0)
+        std_path  = np.std(full, axis=0)
+        p05       = np.percentile(full, 5,  axis=0)
+        p95       = np.percentile(full, 95, axis=0)
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+        fig.suptitle(
+            f"Trayectorias GBM del rollout -- {self.ticker}\n"
+            f"(distribucion de precios futuros usada internamente por MCTS)",
+            fontsize=12, fontweight="bold",
+        )
+
+        for path in full:
+            ax.plot(t_axis, path, color="#1f77b4", lw=0.4, alpha=0.25)
+
+        ax.plot(t_axis, mean_path, color="#d62728", lw=2.0, label="Media GBM")
+        ax.fill_between(t_axis, mean_path - std_path, mean_path + std_path,
+                        color="#d62728", alpha=0.15, label=r"$\pm 1\sigma$")
+        ax.plot(t_axis, p05, color="#2ca02c", lw=1.2,
+                ls="--", label="Percentil 5%")
+        ax.plot(t_axis, p95, color="#2ca02c", lw=1.2,
+                ls="--", label="Percentil 95%")
+        ax.axhline(S0, color="black", lw=1.0, ls=":",
+                   label=f"Precio actual ({S0:.2f} $)")
+
+        ax.set_xlabel("Dias de simulacion")
+        ax.set_ylabel(f"Precio simulado {self.ticker} [$]")
+        ax.legend(fontsize=9)
+        ax.grid(alpha=0.3)
+
+        plt.tight_layout()
+        path_out = os.path.join(self.output_dir, "fig5_gbm_paths.png")
+        plt.savefig(path_out, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"[OK] {path_out}")
+\end{lstlisting}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Sección 8 --- Tabla de métricas en consola}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{lstlisting}[caption={Funcion \texttt{print\_metrics\_table()}}]
+def print_metrics_table(m_mcts: dict, m_bah: dict) -> None:
+    """Imprime la comparativa de metricas en formato tabular."""
+    sep = "=" * 58
+    print(sep)
+    print("  EVALUACION DE POSICION -- MCTS vs BUY & HOLD")
+    print(f"  Activo: {TICKER}   Periodo: {PERIOD}")
+    print(sep)
+    print(f"  {'Metrica':<22} {'MCTS Agent':>14} {'Buy & Hold':>14}")
+    print("-" * 58)
+
+    def p(label, key, fmt="+.2%"):
+        v_m = m_mcts[key]
+        v_b = m_bah[key]
+        print(f"  {label:<22} {format(v_m, fmt):>14} {format(v_b, fmt):>14}")
+
+    p("Valor final [$]",    "final",   ",.2f")
+    p("ROI acumulado",      "roi")
+    p("CAGR",               "cagr")
+    p("Sharpe (anual)",     "sharpe",  ".4f")
+    p("Sortino (anual)",    "sortino", ".4f")
+    p("Max Drawdown",       "max_dd")
+    p("Calmar",             "calmar",  ".4f")
+    p("VaR 95%% (diario)",  "var_95")
+    p("CVaR 95%% (diario)", "cvar_95")
+    print(sep)
+\end{lstlisting}
+
+La salida en consola tiene el siguiente aspecto:
+
+\begin{verbatim}
+==========================================================
+  EVALUACION DE POSICION -- MCTS vs BUY & HOLD
+  Activo: TSLA   Periodo: 2y
+==========================================================
+  Metrica                MCTS Agent     Buy & Hold
+----------------------------------------------------------
+  Valor final [$]        12,450.00      11,200.00
+  ROI acumulado            +24.50%        +12.00%
+  CAGR                     +11.82%         +5.83%
+  Sharpe (anual)            1.4321         0.9812
+  Sortino (anual)           2.1034         1.2300
+  Max Drawdown             -18.34%        -32.10%
+  Calmar                    0.6445         0.1813
+  VaR 95% (diario)          -2.34%         -3.10%
+  CVaR 95% (diario)         -3.89%         -5.20%
+==========================================================
+\end{verbatim}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Sección 9 y 10 --- Reporte y bloque principal}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{lstlisting}[caption={Funcion \texttt{save\_report()} y bloque \texttt{\_\_main\_\_}}]
+def save_report(m_mcts: dict, m_bah: dict,
+                results: dict, output_dir: str) -> None:
+    """Genera backtest_report.md con metricas y referencias a figuras."""
+    path = os.path.join(output_dir, "backtest_report.md")
+    lines = [
+        "# Backtest MCTS -- Evaluacion de posicion en TSLA",
+        f"> Generado el {datetime.date.today().isoformat()}",
+        "",
+        "## Configuracion",
+        f"| Parametro | Valor |",
+        f"|---|---|",
+        f"| Ticker | `{TICKER}` |",
+        f"| Periodo | {PERIOD} |",
+        f"| Iteraciones MCTS | {results.get('mcts_iterations', '--')} |",
+        f"| Horizonte rollout | {results.get('rollout_days', '--')} dias |",
+        f"| Capital inicial | {results['initial_cash']:,.2f} $ |",
+        "",
+        "## Resultados",
+        "| Metrica | MCTS | Buy & Hold |",
+        "|---|---|---|",
+        f"| ROI | {m_mcts['roi']:+.2%} | {m_bah['roi']:+.2%} |",
+        f"| Sharpe | {m_mcts['sharpe']:.4f} | {m_bah['sharpe']:.4f} |",
+        f"| Max DD | {m_mcts['max_dd']:+.2%} | {m_bah['max_dd']:+.2%} |",
+        f"| VaR 95% | {m_mcts['var_95']:+.2%} | {m_bah['var_95']:+.2%} |",
+        "",
+        "## Figuras",
+        "![Senales](fig1_signals.png)",
+        "![Performance](fig2_performance.png)",
+        "![Retornos](fig3_returns.png)",
+        "![Arbol MCTS](fig4_tree.png)",
+        "![GBM Paths](fig5_gbm_paths.png)",
+    ]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    print(f"[OK] Reporte: {path}")
+
+
+# -- Bloque principal ----------------------------------------------------------
+
+if __name__ == "__main__":
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+
+    # 1. Datos
+    prices, dates = download_data(TICKER, PERIOD)
+
+    # 2. Backtest
+    bt = Backtester(
+        mcts_iterations = 300,
+        rollout_days    = 20,
+        window          = 40,
+        tx_cost         = 0.001,
+        rng_seed        = 42,
+    )
+    results = bt.run(prices, dates, initial_cash=INITIAL_CASH)
+
+    # 3. Metricas
+    m_mcts = Backtester.compute_metrics(results["portfolio_series"], "MCTS")
+    m_bah  = Backtester.compute_metrics(results["bah_series"],       "B&H")
+    print_metrics_table(m_mcts, m_bah)
+
+    # 4. Figuras
+    viz = Visualizer(results, prices, dates, TICKER, RESULTS_DIR)
+    viz.plot_signals()       # fig1_signals.png
+    viz.plot_performance()   # fig2_performance.png
+    viz.plot_returns()       # fig3_returns.png
+    viz.plot_mcts_tree()     # fig4_tree.png
+    viz.plot_gbm_paths()     # fig5_gbm_paths.png
+
+    # 5. Reporte
+    save_report(m_mcts, m_bah, results, RESULTS_DIR)
+
+    print(f"\n[OK] Todo guardado en: {RESULTS_DIR}/")
+\end{lstlisting}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Resumen comparativo de mejoras}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{center}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{L{3.8cm} L{5cm} L{5cm}}
+\toprule
+\textbf{Aspecto} & \textbf{\texttt{mcts\_trading.py}} & \textbf{\texttt{mcts\_tsla.py}} \\
+\midrule
+Espacio de acciones & 3 (BUY / SELL / HOLD) & 5 (BUY 25\%, BUY 10\%, HOLD, SELL 10\%, SELL 25\%) \\
+\midrule
+Coste de transacción & No modelado & Sí, proporcional al capital operado \\
+\midrule
+Rollout & GBM con $\mu$, $\sigma$ globales & GBM con calibración rolling de \texttt{window} días \\
+\midrule
+Lookback bias & Sí (precio histórico en expansión) & No (precio GBM simulado en expansión) \\
+\midrule
+Recompensa & Valor absoluto de la cartera & Log-retorno (más estable numéricamente) \\
+\midrule
+Métricas & ROI + Sharpe & + CAGR, Sortino, Calmar, VaR 95\%, CVaR 95\% \\
+\midrule
+Visualizaciones & 1 figura, 3 paneles & 5 figuras, 2--3 paneles cada una \\
+\midrule
+Convergencia UCB & No registrada & Gráfico de $\bar{w}_k$ por iteración \\
+\midrule
+Trayectorias GBM & No visualizadas & Figura 5 dedicada (50 paths + bandas) \\
+\midrule
+Ratio de posición & No calculado & Serie temporal completa (\texttt{position\_ratio}) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{1em}
+\begin{tcolorbox}[mejora, title={Flujo de datos entre secciones}]
+\centering\small
+\texttt{download\_data()} $\rightarrow$ \texttt{Backtester.run()} $\rightarrow$ \texttt{dict results}
+$\rightarrow$ \texttt{Visualizer} + \texttt{compute\_metrics()} + \texttt{save\_report()}
+\end{tcolorbox}
+
+\end{document}

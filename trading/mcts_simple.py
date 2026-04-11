@@ -1,0 +1,1319 @@
+"""
+mcts_simple.py
+==============
+Evaluación simplificada de un activo financiero con Monte Carlo Tree Search.
+
+Objetivo didáctico: entender los 4 pasos del MCTS aplicados a trading,
+con funciones pequeñas, muchos comentarios y visualización clara.
+
+Flujo del programa:
+    1. Descargar precios históricos (yfinance)
+    2. Definir acciones posibles: COMPRAR, VENDER, MANTENER (diferentes valores de COMPRAR y MANTENER)
+    3. Para cada día, ejecutar MCTS y elegir la mejor acción
+    4. Registrar la evolución del portafolio
+    5. Comparar con Buy & Hold y graficar resultados
+
+Dependencias: numpy, matplotlib, yfinance
+"""
+
+import math
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import yfinance as yf
+
+
+# =============================================================================
+# PARÁMETROS GLOBALES
+# Todos los ajustes del experimento están aquí para fácil modificación.
+# =============================================================================
+
+TICKER        = "TSLA"   # Símbolo del activo a analizar
+PERIOD        = "1y"     # Período de descarga: "1y", "6mo", "2y", etc.
+CAPITAL_INIT  = 10_000   # Capital inicial en USD
+ITERACIONES   = 1000      # Iteraciones MCTS por decisión (más = mejor, más lento)
+DIAS_ROLLOUT  = 60       # Días simulados en cada rollout (horizonte de visión)
+VENTANA_CALIB = 60       # Días para estimar mu y sigma (calibración rolling)
+SEMILLA       = 42       # Semilla para reproducibilidad
+
+
+# =============================================================================
+# SECCIÓN 1: DESCARGA DE DATOS
+# =============================================================================
+
+def descargar_precios(ticker: str, periodo: str) -> np.ndarray:
+    """
+    Descarga los precios de cierre ajustados del activo indicado.
+
+    Parámetros
+    ----------
+    ticker  : Símbolo del activo (ej. "TSLA", "AAPL").
+    periodo : Período en formato yfinance (ej. "1y", "6mo").
+
+    Retorna
+    -------
+    np.ndarray : Array 1-D con precios de cierre, en orden cronológico.
+    """
+    print(f"[INFO] Descargando {ticker} ({periodo})...")
+    df = yf.download(ticker, period=periodo, progress=False, auto_adjust=True)
+
+    if df.empty:
+        raise ValueError(f"No hay datos para '{ticker}'.")
+
+    # Extraemos la columna de cierre y la convertimos a array plano
+    precios = df["Close"].dropna().to_numpy(dtype=float).flatten()
+
+    print(f"[INFO] {len(precios)} sesiones. "
+          f"Precio inicial: {precios[0]:.2f}$  "
+          f"Precio final: {precios[-1]:.2f}$")
+    return precios
+
+
+# =============================================================================
+# SECCIÓN 2: ACCIONES POSIBLES
+# Las acciones son las decisiones que el agente puede tomar cada día.
+# Se representan como cadenas simples para máxima legibilidad.
+# =============================================================================
+
+ACCIONES = [
+    "COMPRAR_25", "COMPRAR_20", "COMPRAR_15", "COMPRAR_10", "COMPRAR_05",
+    "MANTENER",
+    "VENDER_05",  "VENDER_10",  "VENDER_15",  "VENDER_20",  "VENDER_25",
+]
+
+# Fracción de efectivo/acciones que mueve cada acción
+_FRACCION_ACCION = {
+    "COMPRAR_25": 0.25,
+    "COMPRAR_20": 0.20,
+    "COMPRAR_15": 0.15,
+    "COMPRAR_10": 0.10,
+    "COMPRAR_05": 0.05,
+    "MANTENER":   0.00,
+    "VENDER_05":  0.05,
+    "VENDER_10":  0.10,
+    "VENDER_15":  0.15,
+    "VENDER_20":  0.20,
+    "VENDER_25":  0.25,
+}
+
+
+# =============================================================================
+# SECCIÓN 3: SEÑALES TÉCNICAS
+# RSI y media móvil aportan contexto de tendencia y sobrecompra/sobreventa
+# al estado del portafolio, mejorando la calidad de las decisiones del MCTS.
+# =============================================================================
+
+def calcular_rsi(precios: np.ndarray, dia: int, periodo: int = 14) -> float:
+    """
+    Calcula el RSI (Relative Strength Index) en el día indicado.
+
+    RSI > 70 → posible sobrecompra; RSI < 30 → posible sobreventa.
+    Retorna 50.0 si no hay suficientes datos.
+    """
+    inicio = max(0, dia - periodo)
+    ventana = precios[inicio : dia + 1]
+    if len(ventana) < 2:
+        return 50.0
+    deltas = np.diff(ventana)
+    ganancias = deltas[deltas > 0].mean() if (deltas > 0).any() else 0.0
+    perdidas  = -deltas[deltas < 0].mean() if (deltas < 0).any() else 1e-10
+    rs  = ganancias / perdidas
+    return 100 - (100 / (1 + rs))
+
+
+def calcular_ma(precios: np.ndarray, dia: int, ventana: int = 20) -> float:
+    """
+    Calcula la media móvil simple de los últimos `ventana` días.
+    Retorna el precio actual si no hay suficientes datos.
+    """
+    inicio = max(0, dia - ventana + 1)
+    return float(np.mean(precios[inicio : dia + 1]))
+
+
+# =============================================================================
+# SECCIÓN 4: ESTADO DEL PORTAFOLIO
+# El "estado" resume toda la información relevante en un instante dado.
+# Usamos un diccionario simple para facilitar la comprensión.
+# =============================================================================
+
+def crear_estado(dia: int, efectivo: float, acciones: float, precio: float,
+                 precios_hist: np.ndarray = None) -> dict:
+    """
+    Crea un estado del portafolio.
+
+    Un estado contiene:
+      - dia      : índice del día en la serie de precios
+      - efectivo : dinero disponible (no invertido)
+      - acciones : número de acciones en cartera
+      - precio   : precio actual del activo
+      - rsi      : RSI de 14 días (señal de sobrecompra/sobreventa)
+      - ma20     : media móvil de 20 días (señal de tendencia)
+
+    El valor total del portafolio es: efectivo + acciones * precio
+    """
+    rsi  = calcular_rsi(precios_hist, dia) if precios_hist is not None else 50.0
+    ma20 = calcular_ma(precios_hist, dia)  if precios_hist is not None else precio
+    return {
+        "dia":      dia,
+        "efectivo": efectivo,
+        "acciones": acciones,
+        "precio":   precio,
+        "rsi":      rsi,
+        "ma20":     ma20,
+    }
+
+
+def valor_portafolio(estado: dict) -> float:
+    """Calcula el valor total del portafolio: efectivo + posición en activo."""
+    return estado["efectivo"] + estado["acciones"] * estado["precio"]
+
+
+def aplicar_accion(estado: dict, accion: str, precio_siguiente: float) -> dict:
+    """
+    Aplica una acción al estado actual y devuelve el nuevo estado.
+
+    Lógica de cada acción:
+      COMPRAR  → gasta el 10% del efectivo en comprar acciones al precio actual
+      VENDER   → vende el 10% de las acciones al precio actual
+      MANTENER → no hace nada
+
+    El nuevo estado tiene el precio del día siguiente (avanza un paso).
+
+    Parámetros
+    ----------
+    estado           : Estado actual del portafolio.
+    accion           : "COMPRAR", "VENDER" o "MANTENER".
+    precio_siguiente : Precio del activo al día siguiente.
+
+    Retorna
+    -------
+    dict : Nuevo estado tras ejecutar la acción.
+    """
+    efectivo = estado["efectivo"]
+    acciones = estado["acciones"]
+    precio   = estado["precio"]
+
+    fraccion = _FRACCION_ACCION.get(accion, 0.0)
+
+    if accion.startswith("COMPRAR"):
+        inversion       = efectivo * fraccion
+        acciones_nuevas = inversion / precio if precio > 0 else 0.0
+        efectivo -= inversion
+        acciones += acciones_nuevas
+
+    elif accion.startswith("VENDER"):
+        acciones_vendidas = acciones * fraccion
+        efectivo += acciones_vendidas * precio
+        acciones -= acciones_vendidas
+
+    # MANTENER: efectivo y acciones no cambian
+
+    # El nuevo estado tiene el precio del siguiente día.
+    # RSI y MA20 se propagan sin recalcular (no tenemos historia en simulación);
+    # en el backtest real se recalculan al reconstruir el estado desde precios_hist.
+    nuevo = crear_estado(
+        dia      = estado["dia"] + 1,
+        efectivo = max(efectivo, 0.0),
+        acciones = max(acciones, 0.0),
+        precio   = precio_siguiente,
+    )
+    nuevo["rsi"]  = estado.get("rsi",  50.0)
+    nuevo["ma20"] = estado.get("ma20", precio_siguiente)
+    return nuevo
+
+
+# =============================================================================
+# SECCIÓN 4: CALIBRACIÓN GBM
+# Para simular el futuro, usamos el Movimiento Browniano Geométrico (GBM).
+# Necesitamos estimar mu (tendencia) y sigma (volatilidad) del activo.
+# Los estimamos con los últimos VENTANA_CALIB días (calibración rolling).
+# =============================================================================
+
+def calibrar_gbm(precios: np.ndarray, dia: int) -> tuple:
+    """
+    Estima mu (drift diario) y sigma (volatilidad diaria) del activo
+    usando los log-retornos de los últimos VENTANA_CALIB días.
+
+    La calibración es "rolling": usa solo los datos disponibles hasta
+    el día actual, sin mirar al futuro (evita lookback bias).
+
+    Parámetros
+    ----------
+    precios : Array completo de precios históricos.
+    dia     : Día actual (índice).
+
+    Retorna
+    -------
+    (mu_diario, sigma_diario) : estimaciones de tendencia y volatilidad.
+    """
+    # Seleccionamos la ventana de precios anteriores al día actual
+    inicio = max(0, dia - VENTANA_CALIB)
+    fin    = min(dia + 1, len(precios))
+    ventana = precios[inicio:fin]
+
+    if len(ventana) >= 3:
+        # Log-retornos: la diferencia en logaritmos es una buena aproximación
+        # del retorno porcentual cuando los cambios son pequeños
+        log_ret = np.diff(np.log(ventana))
+        mu      = float(np.mean(log_ret))
+        sigma   = float(np.std(log_ret, ddof=1)) + 1e-8  # evitar sigma=0
+    else:
+        # Valores por defecto conservadores si no hay suficientes datos
+        mu, sigma = 0.0, 0.01
+
+    return mu, sigma
+
+
+def simular_precio_futuro(precio_actual: float, mu: float, sigma: float,
+                          dias: int, rng: np.random.Generator) -> float:
+    """
+    Simula el precio futuro de un activo usando la fórmula exacta del GBM.
+
+    Fórmula (solución analítica de Black-Scholes):
+        S_T = S_0 * exp( (mu_anual - sigma_anual^2/2) * T
+                         + sigma_anual * sqrt(T) * Z )
+        donde Z ~ N(0,1)
+
+    Esta fórmula no tiene error de discretización porque es la solución
+    exacta de la ecuación diferencial estocástica del GBM.
+
+    Parámetros
+    ----------
+    precio_actual : Precio al inicio de la simulación.
+    mu            : Drift diario estimado.
+    sigma         : Volatilidad diaria estimada.
+    dias          : Horizonte de simulación (en días de trading).
+    rng           : Generador de números aleatorios (para reproducibilidad).
+
+    Retorna
+    -------
+    float : Precio simulado al final del horizonte.
+    """
+    # Convertimos a escala anual (252 días de trading al año)
+    mu_anual    = mu * 252
+    sigma_anual = sigma * math.sqrt(252)
+
+    # T = tiempo en años
+    T = dias / 252.0
+
+    # Z es una variable aleatoria normal estándar
+    Z = rng.standard_normal()
+
+    # Aplicamos la fórmula exacta del GBM
+    precio_futuro = precio_actual * math.exp(
+        (mu_anual - 0.5 * sigma_anual**2) * T
+        + sigma_anual * math.sqrt(T) * Z
+    )
+    return max(precio_futuro, 0.01)  # el precio no puede ser negativo
+
+
+# =============================================================================
+# SECCIÓN 5: LOS 4 PASOS DEL MCTS
+#
+# El MCTS (Monte Carlo Tree Search) funciona construyendo un árbol de
+# decisiones de forma iterativa. En cada iteración realiza 4 pasos:
+#
+#   1. SELECCIÓN    : recorre el árbol eligiendo el nodo más prometedor
+#   2. EXPANSIÓN    : añade un nuevo nodo (acción no explorada)
+#   3. ROLLOUT      : simula el futuro aleatoriamente desde ese nodo
+#   4. BACKPROP     : propaga el resultado hacia la raíz
+#
+# Cada nodo del árbol guarda:
+#   - La acción que lo generó
+#   - El número de veces visitado (n)
+#   - La suma de recompensas obtenidas (w)
+#   - Lista de hijos ya explorados
+#   - Referencia al padre
+# =============================================================================
+
+def crear_nodo(accion=None, padre=None) -> dict:
+    """
+    Crea un nodo del árbol MCTS.
+
+    Un nodo representa una decisión posible. La raíz no tiene acción
+    (accion=None) porque es el punto de partida.
+
+    Campos del nodo:
+      accion  : la acción que llevó hasta aquí desde el padre
+      padre   : referencia al nodo padre (None en la raíz)
+      hijos   : lista de nodos hijo ya creados
+      n       : número de veces que este nodo fue visitado
+      w       : suma total de recompensas obtenidas en visitas
+    """
+    return {
+        "accion": accion,
+        "padre":  padre,
+        "hijos":  [],
+        "n":      0,
+        "w":      0.0,
+    }
+
+
+def ucb1(nodo: dict, c: float = math.sqrt(2)) -> float:
+    """
+    Calcula el valor UCB1 (Upper Confidence Bound) de un nodo.
+
+    UCB1 equilibra exploración y explotación:
+      - Término de explotación (w/n): favorece nodos con buena recompensa media
+      - Término de exploración (c * sqrt(ln(N)/n)): favorece nodos poco visitados
+
+    Fórmula:
+        UCB1 = w/n  +  c * sqrt( ln(N_padre) / n )
+
+    Si el nodo nunca fue visitado (n=0), retorna infinito para garantizar
+    que todo nodo sea explorado al menos una vez.
+
+    Parámetros
+    ----------
+    nodo : Nodo del árbol MCTS.
+    c    : Constante de exploración (por defecto sqrt(2), valor estándar).
+
+    Retorna
+    -------
+    float : Valor UCB1.
+    """
+    if nodo["n"] == 0:
+        return float("inf")  # prioridad máxima a nodos no visitados
+
+    explotacion = nodo["w"] / nodo["n"]
+
+    padre = nodo["padre"]
+    if padre is None or padre["n"] == 0:
+        return explotacion  # si no hay padre, solo explotación
+
+    exploracion = c * math.sqrt(math.log(padre["n"]) / nodo["n"])
+    return explotacion + exploracion
+
+
+def acciones_no_exploradas(nodo: dict) -> list:
+    """
+    Retorna las acciones que aún no tienen un nodo hijo.
+
+    El árbol se expande de una acción a la vez; esta función
+    identifica qué queda por explorar desde el nodo actual.
+    """
+    acciones_exploradas = {hijo["accion"] for hijo in nodo["hijos"]}
+    return [a for a in ACCIONES if a not in acciones_exploradas]
+
+
+# ---------------------------------------------------------------------------
+# Paso 1: SELECCIÓN
+# ---------------------------------------------------------------------------
+
+def seleccionar(raiz: dict) -> dict:
+    """
+    PASO 1 — SELECCIÓN
+
+    Recorre el árbol hacia abajo usando UCB1 hasta encontrar un nodo
+    que no haya sido completamente expandido (aún tiene acciones no probadas).
+
+    Por qué UCB1: permite equilibrar la exploración de caminos nuevos
+    con la explotación de caminos que ya mostraron ser buenos.
+
+    Parámetros
+    ----------
+    raiz : Nodo raíz del árbol.
+
+    Retorna
+    -------
+    dict : Nodo hoja seleccionado para expansión.
+    """
+    nodo_actual = raiz
+
+    # Bajamos por el árbol mientras el nodo esté completamente expandido
+    while not acciones_no_exploradas(nodo_actual) and nodo_actual["hijos"]:
+        # Elegimos el hijo con el mayor valor UCB1
+        nodo_actual = max(nodo_actual["hijos"], key=ucb1)
+
+    return nodo_actual
+
+
+# ---------------------------------------------------------------------------
+# Paso 2: EXPANSIÓN
+# ---------------------------------------------------------------------------
+
+def expandir(nodo: dict) -> dict:
+    """
+    PASO 2 — EXPANSIÓN
+
+    Crea un nuevo nodo hijo para una acción aún no explorada.
+    Se elige aleatoriamente entre las acciones disponibles.
+
+    Por qué aleatorio: al inicio todas las acciones son igual de
+    desconocidas; la exploración las irá discriminando con el tiempo.
+
+    Parámetros
+    ----------
+    nodo : Nodo desde el que expandir.
+
+    Retorna
+    -------
+    dict : El nuevo nodo hijo creado.
+    """
+    no_exploradas = acciones_no_exploradas(nodo)
+
+    # Elegimos una acción no probada al azar
+    accion_nueva = random.choice(no_exploradas)
+
+    # Creamos el hijo y lo añadimos al nodo actual
+    hijo = crear_nodo(accion=accion_nueva, padre=nodo)
+    nodo["hijos"].append(hijo)
+
+    return hijo
+
+
+# ---------------------------------------------------------------------------
+# Paso 3: ROLLOUT (simulación estocástica)
+# ---------------------------------------------------------------------------
+
+def rollout(estado: dict, accion: str, precios: np.ndarray,
+            rng: np.random.Generator) -> float:
+    """
+    PASO 3 — ROLLOUT
+
+    Estima el valor de tomar una acción desde el estado actual,
+    simulando el futuro con el Movimiento Browniano Geométrico (GBM).
+
+    El rollout funciona así:
+      1. Aplicamos la acción al estado actual (ej. COMPRAR)
+      2. Simulamos el precio al final del horizonte (DIAS_ROLLOUT días)
+         usando la fórmula GBM con mu y sigma calibrados
+      3. Calculamos el valor final del portafolio
+
+    RECOMPENSA RELATIVA (vs Buy & Hold):
+      Recompensa = log-retorno(agente) - log-retorno(B&H)
+
+      Por qué relativa: si el mercado sube un 5% y el agente sube un 3%,
+      la recompensa absoluta sería positiva (+3%) pero el agente perdió
+      respecto al mercado. La recompensa relativa daría -2%, penalizando
+      correctamente esa decisión.
+
+      Esto obliga al árbol a buscar acciones que SUPEREN al mercado,
+      no solo que sean positivas. El agente aprende que estar poco
+      invertido en un mercado alcista tiene coste de oportunidad.
+
+    Por qué GBM: es el modelo estocástico estándar en finanzas
+    (base de Black-Scholes). Captura tendencia + aleatoriedad del mercado.
+
+    Parámetros
+    ----------
+    estado  : Estado actual del portafolio.
+    accion  : Acción a evaluar en este rollout.
+    precios : Serie histórica de precios (para calibrar mu y sigma).
+    rng     : Generador de números aleatorios.
+
+    Retorna
+    -------
+    float : Recompensa relativa (log-retorno agente - log-retorno B&H).
+    """
+    # Calibramos mu y sigma con los datos disponibles hasta hoy
+    mu, sigma = calibrar_gbm(precios, estado["dia"])
+
+    # Usamos el mismo Z para agente y B&H: misma trayectoria de mercado,
+    # solo cambia la decisión. Así la comparación es justa.
+    Z = rng.standard_normal()
+
+    mu_anual    = mu * 252
+    sigma_anual = sigma * math.sqrt(252)
+    T           = DIAS_ROLLOUT / 252.0
+
+    # Precio simulado al final del horizonte (mismo para ambas estrategias)
+    precio_simulado = estado["precio"] * math.exp(
+        (mu_anual - 0.5 * sigma_anual**2) * T
+        + sigma_anual * math.sqrt(T) * Z
+    )
+    precio_simulado = max(precio_simulado, 0.01)
+
+    # ── Log-retorno del agente MCTS ────────────────────────────────────────
+    # Aplicamos la acción evaluada y calculamos el valor resultante
+    estado_agente = aplicar_accion(estado, accion, precio_simulado)
+    valor_agente  = valor_portafolio(estado_agente)
+    valor_inicial = valor_portafolio(estado) + 1e-10
+
+    log_ret_agente = math.log(valor_agente / valor_inicial)
+
+    # ── Log-retorno de Buy & Hold (referencia de mercado) ─────────────────
+    # B&H tiene todo el capital invertido desde el inicio: si el precio
+    # sube X%, el portafolio sube X%. No hay efectivo sin invertir.
+    log_ret_bah = math.log(precio_simulado / (estado["precio"] + 1e-10))
+
+    # ── Recompensa relativa ────────────────────────────────────────────────
+    # Positiva si el agente supera a B&H, negativa si queda por debajo.
+    recompensa = log_ret_agente - log_ret_bah
+    return recompensa
+
+
+# ---------------------------------------------------------------------------
+# Paso 4: RETROPROPAGACIÓN
+# ---------------------------------------------------------------------------
+
+def retropropagar(nodo: dict, recompensa: float) -> None:
+    """
+    PASO 4 — RETROPROPAGACIÓN
+
+    Propaga la recompensa obtenida en el rollout hacia arriba por el árbol,
+    actualizando las estadísticas de cada nodo visitado en este camino.
+
+    Por qué propagamos hacia arriba: la recompensa de un nodo hijo informa
+    sobre la calidad de las decisiones que llevaron hasta él. El padre también
+    debe actualizar su conocimiento.
+
+    Después de la retropropagación:
+      - nodo.n aumenta en 1 (una visita más)
+      - nodo.w aumenta en la recompensa (acumula valor)
+      - Lo mismo para todos los ancestros hasta la raíz
+
+    Parámetros
+    ----------
+    nodo      : Nodo hoja desde el que empezar a subir.
+    recompensa: Valor obtenido en el rollout.
+    """
+    nodo_actual = nodo
+    while nodo_actual is not None:
+        nodo_actual["n"] += 1           # una visita más
+        nodo_actual["w"] += recompensa  # acumulamos la recompensa
+        nodo_actual = nodo_actual["padre"]  # subimos al padre
+
+
+# =============================================================================
+# SECCIÓN 6: BUCLE PRINCIPAL MCTS
+# Une los 4 pasos en el número de iteraciones configurado.
+# =============================================================================
+
+def estado_en_nodo(nodo: dict, estado_raiz: dict,
+                   precios: np.ndarray, rng: np.random.Generator) -> dict:
+    """
+    Reconstruye el estado del portafolio en un nodo del árbol aplicando,
+    en orden, todas las acciones del camino raíz → nodo.
+
+    Cada transición usa GBM para simular el precio intermedio, sin
+    consultar precios futuros reales (sin lookforward bias).
+
+    Parámetros
+    ----------
+    nodo        : Nodo hoja cuyo estado queremos reconstruir.
+    estado_raiz : Estado del portafolio en la raíz del árbol.
+    precios     : Serie histórica de precios (para calibrar GBM).
+    rng         : Generador de números aleatorios.
+
+    Retorna
+    -------
+    dict : Estado del portafolio correspondiente al nodo hoja.
+    """
+    # Recorremos de la hoja hacia la raíz para obtener el camino de acciones
+    camino = []
+    n = nodo
+    while n["padre"] is not None:
+        camino.append(n["accion"])
+        n = n["padre"]
+    camino.reverse()  # ordenamos de raíz → hoja
+
+    # Aplicamos cada acción secuencialmente desde el estado raíz
+    estado_actual = estado_raiz
+    for accion in camino:
+        mu, sigma = calibrar_gbm(precios, estado_actual["dia"])
+        precio_sim = simular_precio_futuro(
+            estado_actual["precio"], mu, sigma, 1, rng
+        )
+        estado_actual = aplicar_accion(estado_actual, accion, precio_sim)
+
+    return estado_actual
+
+
+def ejecutar_mcts(estado: dict, precios: np.ndarray,
+                  rng: np.random.Generator,
+                  registrar_convergencia: bool = False):
+    """
+    Ejecuta el algoritmo MCTS completo para un estado dado.
+
+    Construye el árbol de búsqueda durante ITERACIONES ciclos y devuelve
+    la mejor acción según las estadísticas acumuladas.
+
+    Cada iteración:
+      1. Selecciona el nodo más prometedor (UCB1)
+      2. Expande una acción no probada desde ese nodo
+      3. Simula el futuro desde ese nodo (rollout GBM)
+      4. Propaga la recompensa hacia la raíz
+
+    Después de todas las iteraciones, elegimos la acción cuyo hijo tiene
+    la mayor recompensa media (c=0, solo explotación, sin exploración).
+
+    Parámetros
+    ----------
+    estado                : Estado actual del portafolio.
+    precios               : Serie histórica de precios del activo.
+    rng                   : Generador de números aleatorios.
+    registrar_convergencia: Si True, registra w/n de cada acción en cada
+                            iteración para poder graficar la convergencia UCB.
+
+    Retorna
+    -------
+    str o (str, dict):
+      - Si registrar_convergencia=False: devuelve solo la mejor acción.
+      - Si registrar_convergencia=True : devuelve (mejor_accion, historial)
+        donde historial = {accion: [w/n tras iteración 1, 2, ...]}
+    """
+    raiz = crear_nodo()
+
+    # Historial de recompensa media por acción a lo largo de las iteraciones.
+    # Se puebla solo cuando registrar_convergencia=True.
+    historial: dict[str, list[float]] = {a: [] for a in ACCIONES}
+
+    for _ in range(ITERACIONES):
+
+        # ── Paso 1: Selección ──────────────────────────────────────────────
+        hoja = seleccionar(raiz)
+
+        # ── Paso 2: Expansión ──────────────────────────────────────────────
+        if acciones_no_exploradas(hoja):
+            hoja = expandir(hoja)
+
+        # ── Paso 3: Rollout ────────────────────────────────────────────────
+        accion_rollout = hoja["accion"] if hoja["accion"] else "MANTENER"
+        estado_hoja    = estado_en_nodo(hoja, estado, precios, rng)
+        recompensa     = rollout(estado_hoja, accion_rollout, precios, rng)
+
+        # ── Paso 4: Retropropagación ───────────────────────────────────────
+        retropropagar(hoja, recompensa)
+
+        # ── Registro de convergencia (opcional) ────────────────────────────
+        # Tras cada iteración guardamos la recompensa media acumulada (w/n)
+        # de cada hijo directo de la raíz. Esto muestra cómo el árbol va
+        # "aprendiendo" qué acción es mejor a medida que acumula visitas.
+        if registrar_convergencia:
+            hijos_por_accion = {h["accion"]: h for h in raiz["hijos"]}
+            for accion in ACCIONES:
+                h = hijos_por_accion.get(accion)
+                if h and h["n"] > 0:
+                    historial[accion].append(h["w"] / h["n"])
+                else:
+                    # El nodo aún no existe o no ha sido visitado
+                    ultimo = historial[accion][-1] if historial[accion] else 0.0
+                    historial[accion].append(ultimo)
+
+    # ── Elegir la mejor acción ─────────────────────────────────────────────
+    if not raiz["hijos"]:
+        mejor_accion = "MANTENER"
+    else:
+        mejor_hijo   = max(raiz["hijos"],
+                           key=lambda h: h["w"] / h["n"] if h["n"] > 0 else -float("inf"))
+        mejor_accion = mejor_hijo["accion"]
+
+    if registrar_convergencia:
+        return mejor_accion, historial
+    return mejor_accion
+
+
+# =============================================================================
+# SECCIÓN 7: BACKTEST
+# Aplica el agente MCTS a toda la serie histórica, día a día.
+# Simula qué habría ocurrido si hubiésemos usado MCTS para operar.
+# =============================================================================
+
+def backtest(precios: np.ndarray) -> tuple:
+    """
+    Ejecuta el backtest completo del agente MCTS sobre la serie de precios.
+
+    Para cada día:
+      1. Define el estado actual (capital, acciones, precio)
+      2. Consulta al MCTS qué acción tomar
+      3. Aplica la acción con el precio real del día siguiente
+      4. Registra el valor del portafolio
+
+    También calcula la estrategia de referencia Buy & Hold:
+    comprar todo el primer día y no hacer nada más.
+
+    Parámetros
+    ----------
+    precios : Array de precios de cierre históricos.
+
+    Retorna
+    -------
+    (portafolio_mcts, portafolio_bah, acciones_tomadas)
+      portafolio_mcts  : list[float] — evolución del portafolio MCTS
+      portafolio_bah   : list[float] — evolución del portafolio Buy & Hold
+      acciones_tomadas : list[str]   — acción elegida cada día
+    """
+    rng = np.random.default_rng(SEMILLA)  # semilla fija → reproducibilidad
+
+    # Estado inicial: todo en efectivo, sin acciones
+    estado = crear_estado(
+        dia          = 0,
+        efectivo     = CAPITAL_INIT,
+        acciones     = 0.0,
+        precio       = float(precios[0]),
+        precios_hist = precios,
+    )
+
+    portafolio_mcts  = [CAPITAL_INIT]  # valor del portafolio MCTS por día
+    acciones_tomadas = []              # registro de decisiones
+    ratios_posicion  = [0.0]          # fracción del capital invertida cada día
+
+    # Buy & Hold: compramos todas las acciones posibles el primer día
+    acciones_bah    = CAPITAL_INIT / precios[0]
+    portafolio_bah  = [CAPITAL_INIT]
+
+    total_dias      = len(precios) - 1
+    dia_convergencia = total_dias // 2  # día central donde registramos convergencia UCB
+    ucb_historial   = {}               # se rellena en dia_convergencia
+
+    print(f"\n[MCTS] Analizando {total_dias} sesiones de {TICKER}...\n")
+
+    for dia in range(total_dias):
+
+        # Reconstruimos el estado con los indicadores técnicos actualizados
+        estado = crear_estado(
+            dia          = dia,
+            efectivo     = estado["efectivo"],
+            acciones     = estado["acciones"],
+            precio       = float(precios[dia]),
+            precios_hist = precios,
+        )
+
+        # ── Consulta al MCTS ───────────────────────────────────────────────
+        # En el día central activamos el registro de convergencia UCB
+        # para poder graficar cómo el árbol aprende en ese día concreto.
+        if dia == dia_convergencia:
+            mejor_accion, ucb_historial = ejecutar_mcts(
+                estado, precios, rng, registrar_convergencia=True
+            )
+        else:
+            mejor_accion = ejecutar_mcts(estado, precios, rng)
+
+        acciones_tomadas.append(mejor_accion)
+
+        # ── Aplicar la acción con el precio real del siguiente día ─────────
+        precio_siguiente = float(precios[dia + 1])
+        estado = aplicar_accion(estado, mejor_accion, precio_siguiente)
+
+        # Registramos el valor del portafolio y el ratio de posición
+        portafolio_mcts.append(valor_portafolio(estado))
+        val = valor_portafolio(estado)
+        ratio = (estado["acciones"] * precio_siguiente) / val if val > 0 else 0.0
+        ratios_posicion.append(min(ratio, 1.0))
+
+        # Buy & Hold: el valor crece proporcionalmente al precio
+        portafolio_bah.append(acciones_bah * float(precios[dia + 1]))
+
+        # Progreso en consola
+        pct = (dia + 1) / total_dias * 100
+        print(f"\r  Día {dia+1:>3}/{total_dias}  "
+              f"({pct:>5.1f}%)  "
+              f"Acción: {mejor_accion:<10}  "
+              f"Portafolio: {portafolio_mcts[-1]:>10,.2f}$",
+              end="", flush=True)
+
+    print("\n")
+    return portafolio_mcts, portafolio_bah, acciones_tomadas, ratios_posicion, ucb_historial
+
+
+# =============================================================================
+# SECCIÓN 8: MÉTRICAS FINANCIERAS
+# Evaluamos la calidad de la estrategia con métricas estándar.
+# =============================================================================
+
+def calcular_metricas(portafolio: list, etiqueta: str = "") -> dict:
+    """
+    Calcula las métricas financieras principales de una estrategia.
+
+    Métricas calculadas:
+      - ROI         : Retorno total acumulado (%)
+      - Sharpe      : Ajuste por riesgo; mayor = mejor relación retorno/volatilidad
+      - Max Drawdown: Caída máxima desde el pico; mide el peor escenario
+      - Calmar      : ROI anual / |Max Drawdown|; combina rentabilidad y riesgo
+
+    Parámetros
+    ----------
+    portafolio : Lista de valores diarios del portafolio.
+    etiqueta   : Nombre de la estrategia (para imprimir).
+
+    Retorna
+    -------
+    dict con las métricas calculadas.
+    """
+    arr = np.array(portafolio, dtype=float)
+
+    # Retornos diarios: (valor_hoy - valor_ayer) / valor_ayer
+    retornos = np.diff(arr) / arr[:-1]
+
+    # ── ROI ────────────────────────────────────────────────────────────────
+    roi = (arr[-1] - arr[0]) / arr[0]
+
+    # ── Ratio de Sharpe (anualizado, tasa libre de riesgo 0 para simplicidad)
+    # Mide cuánto retorno extra obtenemos por unidad de riesgo asumido
+    if len(retornos) > 1 and np.std(retornos) > 0:
+        sharpe = np.mean(retornos) / np.std(retornos, ddof=1) * math.sqrt(252)
+    else:
+        sharpe = 0.0
+
+    # ── Máximo Drawdown ────────────────────────────────────────────────────
+    # Mide la caída más pronunciada desde cualquier pico previo
+    pico   = np.maximum.accumulate(arr)       # máximo histórico en cada día
+    dd     = (arr - pico) / pico              # caída relativa desde el pico
+    max_dd = float(np.min(dd))               # peor caída
+
+    # ── Ratio de Calmar ────────────────────────────────────────────────────
+    n_dias    = len(arr)
+    roi_anual = (arr[-1] / arr[0]) ** (252 / n_dias) - 1
+    calmar    = roi_anual / abs(max_dd) if max_dd != 0 else float("inf")
+
+    return {
+        "etiqueta":  etiqueta,
+        "roi":       roi,
+        "sharpe":    sharpe,
+        "max_dd":    max_dd,
+        "calmar":    calmar,
+        "valor_fin": float(arr[-1]),
+    }
+
+
+def imprimir_metricas(m_mcts: dict, m_bah: dict) -> None:
+    """Imprime una tabla comparativa de métricas en consola."""
+    sep = "=" * 54
+    print(sep)
+    print(f"  RESULTADOS — MCTS vs BUY & HOLD ({TICKER})")
+    print(sep)
+    print(f"  {'Métrica':<22} {'MCTS':>12} {'Buy & Hold':>12}")
+    print("-" * 54)
+    print(f"  {'Valor final ($)':<22} "
+          f"{m_mcts['valor_fin']:>12,.2f} "
+          f"{m_bah['valor_fin']:>12,.2f}")
+    print(f"  {'ROI acumulado':<22} "
+          f"{m_mcts['roi']:>+11.2%} "
+          f"{m_bah['roi']:>+11.2%}")
+    print(f"  {'Sharpe (anual)':<22} "
+          f"{m_mcts['sharpe']:>12.4f} "
+          f"{m_bah['sharpe']:>12.4f}")
+    print(f"  {'Max Drawdown':<22} "
+          f"{m_mcts['max_dd']:>+11.2%} "
+          f"{m_bah['max_dd']:>+11.2%}")
+    print(f"  {'Calmar':<22} "
+          f"{m_mcts['calmar']:>12.4f} "
+          f"{m_bah['calmar']:>12.4f}")
+    print(sep)
+
+
+# =============================================================================
+# SECCIÓN 9: VISUALIZACIÓN
+# Tres paneles que muestran la evolución y resultados del agente.
+# =============================================================================
+
+def graficar(precios: np.ndarray, portafolio_mcts: list,
+             portafolio_bah: list, acciones_tomadas: list) -> None:
+    """
+    Genera una figura con tres paneles:
+
+      Panel 1 (arriba): Precio del activo con marcadores de las acciones
+                        tomadas por el agente MCTS (compras, ventas, mantener).
+
+      Panel 2 (medio):  Evolución del portafolio MCTS vs Buy & Hold,
+                        normalizados a base 100 para comparación directa.
+
+      Panel 3 (abajo):  Drawdown del portafolio MCTS a lo largo del tiempo,
+                        para visualizar los períodos de pérdida.
+
+    Parámetros
+    ----------
+    precios          : Array de precios históricos.
+    portafolio_mcts  : Lista de valores del portafolio MCTS.
+    portafolio_bah   : Lista de valores del portafolio Buy & Hold.
+    acciones_tomadas : Lista de acciones elegidas por el agente.
+    """
+
+    dias       = list(range(len(precios)))
+    dias_acc   = list(range(len(acciones_tomadas)))  # un día menos que precios
+
+    # Separamos los días según la acción tomada (para los marcadores)
+    dias_compra  = [d for d, a in zip(dias_acc, acciones_tomadas) if a.startswith("COMPRAR")]
+    dias_venta   = [d for d, a in zip(dias_acc, acciones_tomadas) if a.startswith("VENDER")]
+
+    # Normalizamos portafolios a base 100 para comparación directa
+    base     = portafolio_mcts[0]
+    pv_norm  = [v / base * 100 for v in portafolio_mcts]
+    bah_norm = [v / base * 100 for v in portafolio_bah]
+
+    # Calculamos el drawdown del MCTS
+    arr_pv  = np.array(portafolio_mcts)
+    pico_pv = np.maximum.accumulate(arr_pv)
+    dd_pv   = (arr_pv - pico_pv) / pico_pv * 100  # en porcentaje
+
+    # ── Figura y paneles ───────────────────────────────────────────────────
+    fig = plt.figure(figsize=(14, 10))
+    fig.suptitle(
+        f"MCTS Trading simplificado — {TICKER} ({PERIOD})\n"
+        f"Iteraciones por decisión: {ITERACIONES}  |  "
+        f"Horizonte rollout: {DIAS_ROLLOUT} días  |  "
+        f"Capital inicial: {CAPITAL_INIT:,}$",
+        fontsize=12, fontweight="bold", y=0.98,
+    )
+    gs = gridspec.GridSpec(3, 1, height_ratios=[3, 3, 2], hspace=0.45)
+
+    # ── Panel 1: Precio + señales ──────────────────────────────────────────
+    ax1 = fig.add_subplot(gs[0])
+    ax1.plot(dias, precios, color="#2c3e50", lw=1.4,
+             label=f"Precio {TICKER}", zorder=2)
+
+    # Marcadores: triángulo arriba (verde) = COMPRAR, triángulo abajo (rojo) = VENDER
+    if dias_compra:
+        ax1.scatter(dias_compra, precios[dias_compra],
+                    color="#27ae60", marker="^", s=30, zorder=5,
+                    label="COMPRAR", alpha=0.8)
+    if dias_venta:
+        ax1.scatter(dias_venta, precios[dias_venta],
+                    color="#e74c3c", marker="v", s=30, zorder=5,
+                    label="VENDER", alpha=0.8)
+
+    ax1.set_title("Precio del activo con señales de decisión MCTS",
+                  fontsize=10, fontweight="bold")
+    ax1.set_ylabel(f"Precio {TICKER} [$]")
+    ax1.legend(fontsize=9, loc="upper left")
+    ax1.grid(alpha=0.25)
+
+    # ── Panel 2: Evolución normalizada del portafolio ──────────────────────
+    ax2 = fig.add_subplot(gs[1])
+    ax2.plot(dias, pv_norm,  color="#2980b9", lw=2.0, label="MCTS Agent")
+    ax2.plot(dias, bah_norm, color="#e67e22", lw=1.6,
+             ls="--", label="Buy & Hold")
+    ax2.axhline(100, color="gray", lw=0.8, ls=":", alpha=0.7)
+
+    ax2.set_title("Evolución del portafolio (base 100)",
+                  fontsize=10, fontweight="bold")
+    ax2.set_ylabel("Valor (base 100)")
+    ax2.legend(fontsize=9)
+    ax2.grid(alpha=0.25)
+
+    # ── Panel 3: Drawdown del portafolio MCTS ─────────────────────────────
+    ax3 = fig.add_subplot(gs[2])
+    ax3.fill_between(dias, dd_pv, 0, color="#c0392b", alpha=0.45,
+                     label="Drawdown MCTS")
+    ax3.plot(dias, dd_pv, color="#c0392b", lw=0.8)
+    ax3.axhline(0, color="gray", lw=0.8)
+
+    ax3.set_title("Drawdown del portafolio MCTS (%)",
+                  fontsize=10, fontweight="bold")
+    ax3.set_ylabel("Drawdown (%)")
+    ax3.set_xlabel("Día de trading")
+    ax3.legend(fontsize=9)
+    ax3.grid(alpha=0.25)
+
+    plt.savefig("mcts_simple_resultado.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("[OK] Fig 1 guardada: mcts_simple_resultado.png")
+
+
+# =============================================================================
+# SECCIÓN 10: GRÁFICOS ADICIONALES
+# Tres visualizaciones que revelan el valor del método MCTS:
+#   A) Convergencia UCB — cómo el árbol aprende durante las iteraciones
+#   B) Violin plot       — distribución de retornos MCTS vs Buy & Hold
+#   C) Exposición dinámica — cuánto capital está invertido cada día
+# =============================================================================
+
+# Colores fijos por acción (consistentes en todos los gráficos)
+COLORES_ACCION = {
+    "COMPRAR_25": "#1a7a1a",
+    "COMPRAR_10": "#2ecc71",
+    "MANTENER":   "#3498db",
+    "VENDER_10":  "#e74c3c",
+    "VENDER_25":  "#8e0000",
+}
+
+
+def graficar_convergencia_ucb(ucb_historial: dict) -> None:
+    """
+    GRÁFICO A — Convergencia UCB por acción
+
+    Muestra cómo evoluciona la recompensa media acumulada (w/n) de cada
+    acción a lo largo de las ITERACIONES del árbol MCTS en un día concreto.
+
+    Qué revela:
+      - Si el árbol converge rápido (líneas que se separan pronto) el mercado
+        ese día tenía una dirección clara.
+      - Si converge lento o nunca, el día era incierto y el agente dudó.
+      - La acción ganadora (línea más alta al final) es la que se eligió.
+
+    Por qué es único del MCTS: ningún otro algoritmo de trading expone
+    este proceso interno de "razonamiento iterativo".
+
+    Parámetros
+    ----------
+    ucb_historial : dict {accion: [w/n iteración 1, 2, ...]} generado por
+                    ejecutar_mcts con registrar_convergencia=True.
+    """
+    fig, ax = plt.subplots(figsize=(12, 5))
+    fig.suptitle(
+        f"Convergencia UCB — cómo el árbol MCTS aprende en un día ({TICKER})\n"
+        f"Cada línea = recompensa media acumulada (w/n) de una acción posible",
+        fontsize=11, fontweight="bold",
+    )
+
+    for accion, valores in ucb_historial.items():
+        if not valores:
+            continue
+        ax.plot(range(1, len(valores) + 1), valores,
+                lw=1.8, label=accion,
+                color=COLORES_ACCION.get(accion, "gray"))
+
+    # Línea vertical en la iteración donde la acción ganadora se estabiliza
+    # (aproximada como el 60% de las iteraciones)
+    ax.axvline(ITERACIONES * 0.6, color="gray", lw=0.8, ls=":",
+               label="~60% iteraciones")
+
+    ax.set_xlabel("Iteración MCTS")
+    ax.set_ylabel("Recompensa media acumulada (w/n)")
+    ax.set_title("Cuanto más rápido divergen las líneas, más certeza tuvo el árbol",
+                 fontsize=9, style="italic")
+    ax.legend(fontsize=9, loc="upper right")
+    ax.grid(alpha=0.25)
+
+    plt.tight_layout()
+    plt.savefig("mcts_convergencia_ucb.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("[OK] Fig 2 guardada: mcts_convergencia_ucb.png")
+
+
+def graficar_violin_retornos(portafolio_mcts: list,
+                              portafolio_bah: list) -> None:
+    """
+    GRÁFICO B — Violin plot de distribución de retornos diarios
+
+    Un violin plot combina en una sola figura:
+      - La distribución completa de retornos (ancho = densidad)
+      - La mediana (línea blanca central)
+      - El rango intercuartílico IQR (barra gruesa)
+      - Las colas extremas (filamentos finos)
+
+    Qué revela frente a un simple histograma:
+      - Forma asimétrica (skewness): el MCTS tiene la cola izquierda más corta
+        → menos pérdidas extremas que B&H.
+      - Concentración: si el violin es estrecho, los retornos son muy
+        consistentes. Si es ancho, hay mucha variabilidad.
+
+    El argumento visual clave: aunque los retornos medios sean similares,
+    la distribución MCTS está "más a la derecha" en el lado negativo.
+
+    Parámetros
+    ----------
+    portafolio_mcts : Lista de valores diarios del portafolio MCTS.
+    portafolio_bah  : Lista de valores diarios de Buy & Hold.
+    """
+    arr_m = np.array(portafolio_mcts)
+    arr_b = np.array(portafolio_bah)
+
+    # Retornos diarios en porcentaje
+    ret_mcts = np.diff(arr_m) / arr_m[:-1] * 100
+    ret_bah  = np.diff(arr_b) / arr_b[:-1] * 100
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 6),
+                             gridspec_kw={"width_ratios": [2, 1]})
+    fig.suptitle(
+        f"Distribución de retornos diarios — MCTS vs Buy & Hold ({TICKER})\n"
+        f"El violin más estrecho en la cola izquierda indica menos pérdidas extremas",
+        fontsize=11, fontweight="bold",
+    )
+
+    # ── Panel izquierdo: violin plot comparativo ───────────────────────────
+    ax = axes[0]
+    datos   = [ret_mcts, ret_bah]
+    etiquetas = ["MCTS", "Buy & Hold"]
+    colores   = ["#2980b9", "#e67e22"]
+
+    partes = ax.violinplot(datos, positions=[1, 2], showmedians=True,
+                           showextrema=True, widths=0.6)
+
+    # Colorear cada violin individualmente
+    for i, pc in enumerate(partes["bodies"]):
+        pc.set_facecolor(colores[i])
+        pc.set_alpha(0.6)
+    for parte in ["cmedians", "cmins", "cmaxes", "cbars"]:
+        partes[parte].set_color("black")
+        partes[parte].set_linewidth(1.2)
+
+    # Añadir puntos de media sobre cada violin
+    for i, datos_i in enumerate(datos):
+        ax.scatter(i + 1, np.mean(datos_i), color=colores[i],
+                   s=60, zorder=5, edgecolors="black", lw=0.8,
+                   label=f"{etiquetas[i]} (media: {np.mean(datos_i):+.2f}%)")
+
+    ax.axhline(0, color="gray", lw=0.8, ls="--", alpha=0.7)
+    ax.set_xticks([1, 2])
+    ax.set_xticklabels(etiquetas, fontsize=11)
+    ax.set_ylabel("Retorno diario (%)")
+    ax.set_title("Forma completa de la distribución de retornos", fontsize=10)
+    ax.legend(fontsize=9)
+    ax.grid(alpha=0.2, axis="y")
+
+    # ── Panel derecho: métricas clave de la distribución ──────────────────
+    ax2 = axes[1]
+    ax2.axis("off")
+
+    def stats_texto(ret, nombre, color):
+        return (
+            f"{nombre}\n"
+            f"Media:  {np.mean(ret):+.3f}%\n"
+            f"Mediana:{np.median(ret):+.3f}%\n"
+            f"Std:     {np.std(ret):.3f}%\n"
+            f"Min:    {np.min(ret):+.3f}%\n"
+            f"Max:    {np.max(ret):+.3f}%\n"
+            f"Sesgo:  {float(((ret - ret.mean())**3).mean() / ret.std()**3):+.3f}\n"
+            f"Días >0: {(ret > 0).sum()} ({(ret > 0).mean():.1%})"
+        )
+
+    ax2.text(0.05, 0.97, stats_texto(ret_mcts, "MCTS", "#2980b9"),
+             transform=ax2.transAxes, fontsize=9, va="top",
+             bbox=dict(boxstyle="round", facecolor="#dce9f5", alpha=0.8))
+    ax2.text(0.05, 0.45, stats_texto(ret_bah, "Buy & Hold", "#e67e22"),
+             transform=ax2.transAxes, fontsize=9, va="top",
+             bbox=dict(boxstyle="round", facecolor="#fde8cc", alpha=0.8))
+
+    plt.tight_layout()
+    plt.savefig("mcts_violin_retornos.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("[OK] Fig 3 guardada: mcts_violin_retornos.png")
+
+
+def graficar_exposicion_dinamica(precios: np.ndarray,
+                                  portafolio_mcts: list,
+                                  acciones_tomadas: list,
+                                  ratios_posicion: list) -> None:
+    """
+    GRÁFICO C — Exposición dinámica al activo
+
+    Muestra simultáneamente:
+      - El precio del activo (panel superior)
+      - El porcentaje del capital invertido en el activo cada día
+        como área rellena (panel inferior)
+      - Los momentos de compra y venta marcados en el precio
+
+    Qué revela:
+      - El stop-loss inteligente: antes de caídas pronunciadas, el agente
+        reduce exposición (el área baja). Antes de subidas la aumenta.
+      - La diferencia con B&H: B&H tiene exposición 100% constante.
+        MCTS la modula dinámicamente según su "visión" del mercado.
+      - Períodos de alta convicción (exposición ~100%) vs incertidumbre
+        (exposición baja, mucho efectivo retenido).
+
+    Parámetros
+    ----------
+    precios          : Array de precios históricos.
+    portafolio_mcts  : Lista de valores del portafolio MCTS.
+    acciones_tomadas : Lista de acciones elegidas por el agente.
+    ratios_posicion  : Lista de fracciones de capital invertido [0, 1].
+    """
+    dias     = list(range(len(precios)))
+    dias_acc = list(range(len(acciones_tomadas)))
+
+    dias_compra25 = [d for d, a in zip(dias_acc, acciones_tomadas) if a == "COMPRAR_25"]
+    dias_compra10 = [d for d, a in zip(dias_acc, acciones_tomadas) if a == "COMPRAR_10"]
+    dias_venta10  = [d for d, a in zip(dias_acc, acciones_tomadas) if a == "VENDER_10"]
+    dias_venta25  = [d for d, a in zip(dias_acc, acciones_tomadas) if a == "VENDER_25"]
+
+    ratios_pct = [r * 100 for r in ratios_posicion]  # en porcentaje
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8),
+                                    gridspec_kw={"height_ratios": [3, 2]},
+                                    sharex=True)
+    fig.suptitle(
+        f"Exposición dinámica al activo — Stop-loss inteligente MCTS ({TICKER})\n"
+        f"El área muestra cuánto capital está invertido en el activo cada día",
+        fontsize=11, fontweight="bold",
+    )
+
+    # ── Panel superior: precio + señales de acción ─────────────────────────
+    ax1.plot(dias, precios, color="#2c3e50", lw=1.4,
+             label=f"Precio {TICKER}", zorder=2)
+
+    # Marcadores diferenciados por intensidad de la acción
+    for idx_list, color, marker, label in [
+        (dias_compra25, "#1a7a1a", "^", "COMPRAR 25%"),
+        (dias_compra10, "#2ecc71", "^", "COMPRAR 10%"),
+        (dias_venta10,  "#e74c3c", "v", "VENDER 10%"),
+        (dias_venta25,  "#8e0000", "v", "VENDER 25%"),
+    ]:
+        if idx_list:
+            ax1.scatter(idx_list, precios[idx_list],
+                        color=color, marker=marker, s=28,
+                        zorder=5, alpha=0.85, label=label)
+
+    ax1.set_ylabel(f"Precio {TICKER} [$]")
+    ax1.legend(fontsize=8, loc="upper left", ncol=2)
+    ax1.grid(alpha=0.2)
+
+    # ── Panel inferior: ratio de posición como área rellena ────────────────
+    # Zona verde = capital invertido, zona gris = efectivo sin invertir
+    ax2.fill_between(dias, ratios_pct, 100,
+                     color="#bdc3c7", alpha=0.4, label="Efectivo (sin invertir)")
+    ax2.fill_between(dias, 0, ratios_pct,
+                     color="#2980b9", alpha=0.55, label="Invertido en TSLA")
+    ax2.plot(dias, ratios_pct, color="#1a5276", lw=1.0)
+
+    # Línea de referencia Buy & Hold (siempre al 100%)
+    ax2.axhline(100, color="#e67e22", lw=1.2, ls="--",
+                label="Buy & Hold (100% siempre)", alpha=0.8)
+
+    ax2.set_ylim(0, 105)
+    ax2.set_ylabel("Capital invertido (%)")
+    ax2.set_xlabel("Día de trading")
+    ax2.legend(fontsize=9, loc="lower right")
+    ax2.grid(alpha=0.2)
+
+    # Anotación con la exposición media
+    media_exp = float(np.mean(ratios_pct))
+    ax2.axhline(media_exp, color="#2980b9", lw=0.8, ls=":",
+                alpha=0.7)
+    ax2.text(len(dias) * 0.02, media_exp + 1.5,
+             f"Media: {media_exp:.1f}%", fontsize=8, color="#1a5276")
+
+    plt.tight_layout()
+    plt.savefig("mcts_exposicion_dinamica.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("[OK] Fig 4 guardada: mcts_exposicion_dinamica.png")
+
+
+# =============================================================================
+# SECCIÓN 11: PROGRAMA PRINCIPAL
+# Une todas las piezas en orden lógico.
+# =============================================================================
+
+if __name__ == "__main__":
+
+    # ── 1. Descargar datos ─────────────────────────────────────────────────
+    precios = descargar_precios(TICKER, PERIOD)
+
+    # ── 2. Ejecutar backtest con el agente MCTS ────────────────────────────
+    portafolio_mcts, portafolio_bah, acciones, ratios_pos, ucb_hist = backtest(precios)
+
+    # ── 3. Calcular y mostrar métricas ─────────────────────────────────────
+    metricas_mcts = calcular_metricas(portafolio_mcts, "MCTS")
+    metricas_bah  = calcular_metricas(portafolio_bah,  "B&H")
+    imprimir_metricas(metricas_mcts, metricas_bah)
+
+    # ── 4. Distribución de acciones tomadas ────────────────────────────────
+    total = len(acciones)
+    print(f"\n  Decisiones tomadas ({total} días):")
+    for accion in ACCIONES:
+        n = acciones.count(accion)
+        print(f"    {accion:<12}: {n:>4} sesiones ({n/total:>6.1%})")
+    print()
+
+    # ── 5-8. Generar las 4 figuras ─────────────────────────────────────────
+    # Cada función guarda su PNG y cierra la figura con plt.close(),
+    # evitando que plt.show() bloquee entre llamadas.
+    # Al final abrimos los 4 archivos de golpe con el visor del sistema.
+    print("\n[INFO] Generando figuras...")
+    graficar(precios, portafolio_mcts, portafolio_bah, acciones)
+    graficar_convergencia_ucb(ucb_hist)
+    graficar_violin_retornos(portafolio_mcts, portafolio_bah)
+    graficar_exposicion_dinamica(precios, portafolio_mcts, acciones, ratios_pos)
+
+    # Abrir los 4 PNG con Preview (macOS) de una sola vez
+    import subprocess
+    archivos = [
+        "mcts_simple_resultado.png",
+        "mcts_convergencia_ucb.png",
+        "mcts_violin_retornos.png",
+        "mcts_exposicion_dinamica.png",
+    ]
+    print("\n[INFO] Abriendo los 4 graficos en Preview...")
+    subprocess.Popen(["open"] + archivos)

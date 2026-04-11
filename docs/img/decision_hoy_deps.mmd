@@ -1,0 +1,23 @@
+graph TD
+    main["__main__"] --> decision_hoy
+
+    decision_hoy --> descargar_precios
+    decision_hoy --> crear_estado
+    decision_hoy --> valor_portafolio
+    decision_hoy --> ejecutar_mcts
+    decision_hoy --> graficar_convergencia_ucb
+    decision_hoy --> interpretar_indicadores
+    decision_hoy --> interpretar_accion
+    decision_hoy --> graficar_ranking
+
+    crear_estado --> calcular_rsi
+    crear_estado --> calcular_ma
+
+    ejecutar_mcts --> acciones_viables
+    ejecutar_mcts --> seleccionar
+    ejecutar_mcts --> expandir
+    ejecutar_mcts --> rollout
+    ejecutar_mcts --> retropropagar
+
+    interpretar_accion --> FRACCION_ACCION
+    graficar_ranking --> COLORES_ACCION

@@ -1,0 +1,253 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{parskip}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    urlcolor=blue!60!black,
+    citecolor=blue!60!black,
+    pdftitle={Marco teorico de Monte Carlo aplicado en mcts\_simple},
+    pdfauthor={Carlos Ruiz Navarro}
+}
+
+\newtheorem{theorem}{Teorema}
+\newtheorem{proposition}[theorem]{Proposición}
+\newtheorem{lemma}[theorem]{Lema}
+\theoremstyle{definition}
+\newtheorem{definition}{Definición}
+
+\title{\textbf{Marco teórico de Monte Carlo aplicado en \texttt{mcts\_simple}}\\[0.4em]
+\large Desarrollo riguroso de la teoría contenida en \texttt{montecarlo.pdf} \\ e interpretación del código \texttt{mcts\_simple(09\_04\_1722).pdf} como ejemplo de aplicación}
+\author{Generado a partir del cuaderno \emph{Stochastic MCTS} (NotebookLM)}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent Este documento expone de forma autocontenida el marco teórico de Monte Carlo tal y como se presenta en la fuente \texttt{montecarlo.pdf}, y muestra cómo cada elemento teórico se instancia en el código contenido en \texttt{mcts\_simple(09\_04\_1722).pdf}. Se mantiene una separación estricta entre teoría y aplicación: las definiciones, teoremas y métodos proceden \emph{exclusivamente} de \texttt{montecarlo.pdf}, mientras que \texttt{mcts\_simple} se trata como un caso de uso numérico en el que dichos resultados cobran vida. Se hace notar explícitamente que conceptos propios de la heurística MCTS (selección, expansión, política UCB, árbol de búsqueda) \textbf{no} aparecen en \texttt{montecarlo.pdf}; por ello el análisis se centra en el motor probabilístico subyacente a las fases de \emph{simulación (rollout)} y \emph{retropropagación} del código, que es donde la teoría Monte Carlo se aplica literalmente.
+\end{abstract}
+
+\tableofcontents
+\vspace{1em}
+\hrule
+\vspace{1em}
+
+% ============================================================
+\section{Introducción}
+% ============================================================
+
+El método Monte Carlo se define en \texttt{montecarlo.pdf} como \emph{``un conjunto de métodos estocásticos que utilizan variables aleatorias, bajo un modelo probabilístico''} para estimar magnitudes matemáticas cuyo cálculo directo resulta inabordable. Su utilidad en el contexto de \texttt{mcts\_simple} es doble:
+
+\begin{enumerate}[leftmargin=1.4em]
+    \item El cálculo exacto de las trayectorias futuras del precio de un activo financiero es intratable: el espacio de trayectorias posibles es infinito y la dinámica es estocástica.
+    \item Monte Carlo permite sustituir ese cálculo exacto por un \emph{muestreo} sobre un número finito (pero suficientemente grande) de realizaciones de las variables aleatorias involucradas, y tomar la media muestral como estimador del valor esperado de una decisión.
+\end{enumerate}
+
+La legitimidad de esta sustitución descansa sobre dos pilares teóricos desarrollados en \texttt{montecarlo.pdf}: la \textbf{Ley Fuerte de los Grandes Números} (que garantiza la convergencia casi segura del estimador empírico a la esperanza teórica) y el \textbf{Teorema Central del Límite} (que cuantifica la tasa de dicha convergencia y permite construir intervalos de confianza). En \texttt{mcts\_simple} ambos resultados son los que justifican que, tras suficientes iteraciones, el valor acumulado dividido entre el número de visitas de un nodo del árbol pueda interpretarse como una estimación fiable del rendimiento esperado de la decisión asociada.
+
+% ============================================================
+\section{Conceptos fundamentales}
+% ============================================================
+
+Se recogen aquí las definiciones de \texttt{montecarlo.pdf} (Sección 2) estrictamente necesarias para dar sentido al código de \texttt{mcts\_simple}.
+
+\begin{definition}[Espacio de probabilidad]
+Un \emph{espacio de probabilidad} es una terna $(\Omega, \mathcal{A}, \Pr)$ formada por un espacio muestral $\Omega$, una $\sigma$--álgebra $\mathcal{A}$ de subconjuntos de $\Omega$, y una medida de probabilidad $\Pr:\mathcal{A}\to[0,1]$.
+\end{definition}
+
+\begin{definition}[Variable aleatoria]
+Una función $X:\Omega\to\mathbb{R}$ es una \emph{variable aleatoria} si para todo intervalo $I\subseteq\mathbb{R}$, la preimagen
+\[
+\{\omega\in\Omega : X(\omega)\in I\}
+\]
+es un elemento de $\mathcal{A}$, es decir, un suceso.
+\end{definition}
+
+\begin{definition}[Esperanza matemática]
+Dada una variable aleatoria continua $X$ con función de densidad $f$, su \emph{esperanza} (o valor medio) se define como
+\begin{equation}
+\mu_X \;=\; E[X] \;=\; \int_{-\infty}^{\infty} x\, f(x)\, dx.
+\label{eq:esperanza}
+\end{equation}
+\end{definition}
+
+\begin{definition}[Varianza]
+La \emph{varianza} de $X$ mide la dispersión de la distribución alrededor de la esperanza y se define como
+\begin{equation}
+\sigma_X^2 \;=\; \operatorname{Var}(X) \;=\; E\bigl[(X-E[X])^2\bigr] \;=\; E[X^2] - (E[X])^2.
+\label{eq:varianza}
+\end{equation}
+\end{definition}
+
+\begin{definition}[Distribución normal]
+Se dice que $X\sim\mathcal{N}(\mu,\sigma^2)$ si su función de densidad es
+\begin{equation}
+f(x) \;=\; \frac{1}{\sqrt{2\pi\sigma^2}}\,\exp\!\left(-\frac{(x-\mu)^2}{2\sigma^2}\right),
+\qquad x\in\mathbb{R}.
+\label{eq:normal}
+\end{equation}
+Toda variable normal puede \emph{estandarizarse} mediante el cambio
+\begin{equation}
+Z \;=\; \frac{X-\mu}{\sigma} \;\sim\; \mathcal{N}(0,1).
+\label{eq:estandarizacion}
+\end{equation}
+\end{definition}
+
+La distribución normal estándar $\mathcal{N}(0,1)$ es la pieza central para modelar el \emph{choque aleatorio} del mercado en el código: es lo que el generador pseudoaleatorio del ordenador produce cuando se invoca \texttt{rng.normal(0,1)}.
+
+% ============================================================
+\section{Teoremas y resultados clave}
+% ============================================================
+
+Los siguientes teoremas de \texttt{montecarlo.pdf} (Secciones 2 y 3) sustentan la validez del procedimiento que \texttt{mcts\_simple} aplica en su fase de simulación.
+
+\begin{theorem}[Teorema Central del Límite, Teorema 2.20]
+Sea $X_1,X_2,\dots$ una sucesión de variables aleatorias independientes e idénticamente distribuidas (i.i.d.) con esperanza $\mu$ y varianza finita $\sigma^2>0$. Entonces
+\begin{equation}
+\lim_{n\to\infty}\Pr\!\left(
+\frac{\tfrac{1}{n}\sum_{i=1}^{n} X_i - \mu}{\sigma/\sqrt{n}}\;\le\; x
+\right)
+\;=\;
+\Phi(x)
+\;=\;
+\int_{-\infty}^{x}\frac{1}{\sqrt{2\pi}}\,e^{-z^{2}/2}\,dz.
+\label{eq:tcl}
+\end{equation}
+\end{theorem}
+
+El TCL es lo que permite afirmar que, para $n$ grande, el error del estimador empírico
+es del orden $\sigma/\sqrt{n}$: esta es la célebre tasa de convergencia $\mathcal{O}(n^{-1/2})$ característica del método Monte Carlo.
+
+\begin{theorem}[Ley Débil de los Grandes Números, Teorema 3.1]
+Con las mismas hipótesis que en el TCL,
+\begin{equation}
+\lim_{n\to+\infty}\Pr\!\left(\left|\frac{X_1+\cdots+X_n}{n}-\mu\right|\ge\varepsilon\right) \;=\; 0,
+\qquad \forall\varepsilon>0.
+\label{eq:lgn_debil}
+\end{equation}
+\end{theorem}
+
+\begin{theorem}[Ley Fuerte de los Grandes Números, Teorema 3.2]
+Con las mismas hipótesis,
+\begin{equation}
+\Pr\!\left(\lim_{n\to+\infty}\frac{X_1+\cdots+X_n}{n}=\mu\right) \;=\; 1.
+\label{eq:lgn_fuerte}
+\end{equation}
+\end{theorem}
+
+Este es \emph{el} resultado que legitima toda la lógica de estimación en \texttt{mcts\_simple}: afirma que, casi seguramente, la media muestral de los retornos simulados converge al retorno esperado real.
+
+\begin{proposition}[Insesgadez de la media muestral, Proposición 3.7]
+Sea $\hat{I}_n$ el estimador construido como media muestral reescalada (véase la Sección~\ref{sec:metodos}). Entonces
+\begin{equation}
+E[\hat{I}_n] \;=\; I,
+\qquad
+\operatorname{Var}(\hat{I}_n) \;=\; \frac{v^{2}}{n}\,\sigma_F^{2},
+\label{eq:insesgadez}
+\end{equation}
+donde $I$ es la integral (valor esperado) que se desea estimar, $v$ la constante de reescalado y $\sigma_F^2$ la varianza del integrando. En particular, el estimador es insesgado y su varianza decae como $1/n$.
+\end{proposition}
+
+% ============================================================
+\section{Algoritmos y métodos}\label{sec:metodos}
+% ============================================================
+
+Dentro de \texttt{montecarlo.pdf} se describen dos procedimientos numéricos que se aplican de forma directa en \texttt{mcts\_simple}. Es importante insistir en que \texttt{montecarlo.pdf} \textbf{no} formaliza la heurística MCTS como tal (ni selección, ni expansión, ni UCB); lo que sí proporciona es el motor probabilístico sobre el que descansan las fases de \emph{simulación} y \emph{retropropagación}.
+
+\subsection{Simulación de variables aleatorias (Sección 2.4)}
+
+El \emph{Teorema de Inversión} (Teorema 2.12 de \texttt{montecarlo.pdf}) afirma que si $U\sim\mathcal{U}(0,1)$ y $F$ es una función de distribución con inversa $F^{-1}$, entonces la variable
+\begin{equation}
+X \;=\; F^{-1}(U)
+\label{eq:inversion}
+\end{equation}
+tiene a $F$ como función de distribución. Esto reduce el problema de generar muestras de cualquier distribución $F$ al problema, trivial desde el punto de vista computacional, de generar uniformes en $[0,1]$. En la práctica, los generadores estándar del lenguaje (incluyendo \texttt{numpy.random}) combinan este principio con el algoritmo de Box--Muller u otros para producir directamente muestras de $\mathcal{N}(0,1)$.
+
+\subsection{Método Monte Carlo de la media muestral (Sección 3.2)}
+
+La idea central del método es que una integral (o, equivalentemente, una esperanza) puede estimarse por muestreo:
+\begin{equation}
+I \;=\; \int_D F(x)\,f(x)\,dx \;=\; E[F(X)]
+\;\approx\;
+\hat{I}_n \;=\; v\,\bar{X}_n \;=\; \frac{v}{n}\sum_{i=1}^{n} F(\hat{x}_i),
+\label{eq:monte_carlo_media}
+\end{equation}
+donde $\hat{x}_1,\dots,\hat{x}_n$ son realizaciones i.i.d.\ extraídas de la distribución de $X$, y $v$ es una posible constante de normalización (por ejemplo, el volumen del dominio si el muestreo es uniforme). Por la Proposición de insesgadez y por la Ley Fuerte de los Grandes Números, $\hat{I}_n$ es un estimador \emph{consistente e insesgado} de $I$, y su incertidumbre se reduce como $1/\sqrt{n}$ (por el TCL).
+
+En esencia, toda fase de \emph{rollout} en un árbol Monte Carlo es una aplicación literal de \eqref{eq:monte_carlo_media} con $v=1$: se extraen muestras del generador, se evalúa la recompensa, y se promedia.
+
+% ============================================================
+\section{Conexión con \texttt{mcts\_simple(09\_04\_1722).pdf}}
+% ============================================================
+
+A continuación se detalla, elemento por elemento, cómo los conceptos anteriores se instancian en el código. Se indica en cada caso la parte del programa donde el resultado teórico interviene.
+
+\subsection{Uso de la distribución normal estándar}
+
+\textbf{Ubicación:} función \texttt{simular\_precio\_futuro}.\\
+\textbf{Teoría aplicada:} ecuaciones \eqref{eq:normal} y \eqref{eq:estandarizacion}.
+
+El código implementa un Movimiento Browniano Geométrico discretizado sobre los precios. En cada paso temporal, el choque aleatorio del mercado se modela invocando \texttt{rng.normal(0,1)}, lo que corresponde exactamente a tomar una realización de la variable estandarizada $Z\sim\mathcal{N}(0,1)$ definida en \eqref{eq:estandarizacion}. La actualización del precio tiene la forma
+\[
+S_{t+1} \;=\; S_t\,\exp\!\left(\left(\mu-\tfrac{1}{2}\sigma^2\right)\Delta t + \sigma\sqrt{\Delta t}\,Z_t\right),
+\]
+con $Z_t\sim\mathcal{N}(0,1)$ i.i.d. Cada muestra así generada es, en el lenguaje de \eqref{eq:inversion}, un $X=F^{-1}(U)$ con $F$ igual a la función de distribución normal estándar.
+
+\subsection{Fase de simulación (\emph{rollout}) como muestreo Monte Carlo}
+
+\textbf{Ubicación:} Fase 3 del algoritmo, función \texttt{rollout}.\\
+\textbf{Teoría aplicada:} concepto general de Monte Carlo (Sección 1) y simulación de v.a.\ (Sección 2.4).
+
+En esta fase el código genera una trayectoria aleatoria de precios hasta un horizonte \texttt{DIAS\_ROLLOUT}, y calcula el retorno final de esa realización concreta. Cada \texttt{rollout} es, matemáticamente, una extracción de una muestra $\hat{x}_i$ del espacio de trayectorias, y la recompensa final $F(\hat{x}_i)$ es el valor numérico asociado a esa muestra. Este paso es la instancia más pura posible del principio Monte Carlo: aproximar una dinámica estocástica compleja mediante realizaciones individuales.
+
+\subsection{Retropropagación como estimador de la media muestral}
+
+\textbf{Ubicación:} Fase 4 del algoritmo, función \texttt{retropropagar}; cada nodo guarda dos contadores, \texttt{w} (suma de recompensas) y \texttt{n} (número de visitas).\\
+\textbf{Teoría aplicada:} ecuación \eqref{eq:monte_carlo_media} y Proposición de insesgadez \eqref{eq:insesgadez}.
+
+Tras cada \texttt{rollout}, el código recorre el camino desde la hoja hasta la raíz y actualiza en cada nodo visitado:
+\[
+\texttt{nodo["w"]}\mathrel{+}=\text{recompensa}, \qquad \texttt{nodo["n"]}\mathrel{+}=1.
+\]
+Cuando posteriormente se consulta el valor estimado de ese nodo, el código computa el cociente \texttt{w/n}. Este cociente es, término a término, el estimador
+\[
+\bar{X}_n \;=\; \frac{1}{n}\sum_{i=1}^{n} X_i,
+\]
+es decir, la media muestral de las recompensas observadas al pasar por ese nodo. Por la Proposición~\ref{eq:insesgadez} esta cantidad es un estimador insesgado del valor esperado real de la decisión representada por el nodo, y por la Ley Fuerte de los Grandes Números \eqref{eq:lgn_fuerte} converge casi seguramente a dicho valor esperado cuando el número de visitas crece.
+
+\subsection{Bucle principal y Ley Fuerte de los Grandes Números}
+
+\textbf{Ubicación:} función \texttt{ejecutar\_mcts}, bucle principal con \texttt{ITERACIONES = 1000}.\\
+\textbf{Teoría aplicada:} Teoremas~\ref{eq:lgn_fuerte} (LFGN) y~\ref{eq:tcl} (TCL).
+
+La decisión de ejecutar 1000 iteraciones del bucle no es arbitraria: es el parámetro $n$ del método Monte Carlo. El Teorema~\ref{eq:lgn_fuerte} garantiza la convergencia casi segura del estimador \texttt{w/n} al valor esperado real; el Teorema~\ref{eq:tcl} indica que el error de dicha estimación decrece como $1/\sqrt{n}$, de modo que cuadruplicar las iteraciones reduce a la mitad la desviación típica del error. Esta es la razón teórica por la que el algoritmo puede \emph{confiar} en \texttt{w/n} como una estimación significativa, y por la que escoger $n=1000$ representa un compromiso razonable entre precisión y coste computacional.
+
+% ============================================================
+\section{Conclusiones}
+% ============================================================
+
+El archivo \texttt{mcts\_simple(09\_04\_1722).pdf} se puede leer, desde la perspectiva de \texttt{montecarlo.pdf}, como una aplicación concreta del \emph{método de la media muestral}: cada \texttt{rollout} es una muestra i.i.d., cada recompensa observada es la evaluación del integrando, y cada cociente \texttt{w/n} almacenado en un nodo es un estimador insesgado y consistente del valor esperado de la decisión asociada. Los resultados formales que legitiman este uso son, por orden de aparición:
+
+\begin{itemize}[leftmargin=1.4em]
+    \item la estandarización de variables normales \eqref{eq:estandarizacion}, empleada para modelar el choque de mercado;
+    \item el Teorema de Inversión \eqref{eq:inversion}, que justifica que un generador pseudoaleatorio pueda producir muestras de $\mathcal{N}(0,1)$;
+    \item el método Monte Carlo de la media muestral \eqref{eq:monte_carlo_media}, que identifica \texttt{w/n} con el estimador $\bar X_n$;
+    \item la insesgadez del estimador \eqref{eq:insesgadez};
+    \item la Ley Fuerte de los Grandes Números \eqref{eq:lgn_fuerte}, que asegura la convergencia casi segura;
+    \item y el Teorema Central del Límite \eqref{eq:tcl}, que cuantifica la tasa de dicha convergencia.
+\end{itemize}
+
+Conviene subrayar, para evitar confusiones, que \texttt{montecarlo.pdf} \emph{no} contiene material sobre árboles de búsqueda, políticas de selección tipo UCB, expansión de nodos, ni el algoritmo MCTS como heurística completa. Toda la lógica propiamente \emph{arbórea} de \texttt{mcts\_simple} (selección del hijo a explorar, expansión, criterio de corte, etc.) queda fuera del alcance teórico de la fuente considerada. El presente documento se ha limitado, en estricto cumplimiento de la consigna, a explicar \textbf{únicamente} los elementos de \texttt{mcts\_simple} que son traducción directa de la teoría contenida en \texttt{montecarlo.pdf}.
+
+\end{document}

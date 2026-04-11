@@ -1,0 +1,61 @@
+stateDiagram-v2
+    [*] --> Raiz : pesos = 1/N
+
+    Raiz --> Seleccion : iteracion k
+
+    state "Seleccion UCT" as Seleccion {
+        [*] --> EvalUCT
+        state "eval UCB1" as EvalUCT
+        EvalUCT --> Bajar : expandido
+        state "bajar hijo" as Bajar
+        Bajar --> EvalUCT
+        EvalUCT --> [*] : hoja
+    }
+
+    Seleccion --> Expansion
+
+    state "Expansion" as Expansion {
+        [*] --> Elegir
+        state "elegir accion" as Elegir
+        Elegir --> Nuevo
+        state "nuevo nodo" as Nuevo
+        Nuevo --> [*]
+    }
+
+    Expansion --> Rollout
+
+    state "Rollout GBM vs SPY" as Rollout {
+        [*] --> Aplicar
+        state "aplicar accion" as Aplicar
+        Aplicar --> Calibrar
+        state "calibrar mu Sigma" as Calibrar
+        Calibrar --> Cholesky
+        state "Cholesky L" as Cholesky
+        Cholesky --> Simular
+        state "simular GBM" as Simular
+        Simular --> Recompensa
+        state "reward vs SPY" as Recompensa
+        Recompensa --> [*]
+    }
+
+    Rollout --> Retroprop
+
+    state "Retropropagacion" as Retroprop {
+        [*] --> Update
+        state "w += r  n += 1" as Update
+        Update --> Subir : padre != None
+        state "subir padre" as Subir
+        Subir --> Update
+        Subir --> [*]
+    }
+
+    Retroprop --> Raiz : k < K
+    Retroprop --> Decision : k = K
+
+    state "Decision" as Decision {
+        [*] --> Argmax
+        state "a* = argmax Q/N" as Argmax
+        Argmax --> [*]
+    }
+
+    Decision --> [*] : a* recomendada

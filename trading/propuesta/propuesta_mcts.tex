@@ -1,0 +1,438 @@
+% ============================================================
+%  Propuesta de Proyecto: Agente de Trading MCTS — TSLA
+% ============================================================
+\documentclass[11pt, a4paper]{article}
+
+% ── Encoding & fonts ─────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% ── Page layout ──────────────────────────────────────────────
+\usepackage[top=2.2cm, bottom=2.2cm, left=2.4cm, right=2.4cm]{geometry}
+
+% ── Color palette ────────────────────────────────────────────
+\usepackage[dvipsnames, svgnames, x11names]{xcolor}
+\definecolor{bg}{HTML}{FFFFFF}
+\definecolor{card}{HTML}{F6F8FA}
+\definecolor{acc1}{HTML}{0969DA}   % azul
+\definecolor{acc2}{HTML}{1A7F37}   % verde
+\definecolor{acc3}{HTML}{CF222E}   % naranja/rojo
+\definecolor{acc4}{HTML}{8250DF}   % violeta
+\definecolor{txt}{HTML}{1F2328}
+\definecolor{mut}{HTML}{57606A}
+
+% ── Graphics & diagrams ──────────────────────────────────────
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, shapes.geometric, shapes.misc,
+                positioning, fit, calc, backgrounds,
+                decorations.pathreplacing, matrix}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+
+% ── Boxes & layout helpers ───────────────────────────────────
+\usepackage[most]{tcolorbox}
+\tcbuselibrary{breakable, skins, theorems}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multicol}
+\usepackage{enumitem}
+\usepackage{amsmath, amssymb}
+\usepackage{mathtools}
+\usepackage{fontawesome5}
+
+% ── Hyperlinks ───────────────────────────────────────────────
+\usepackage[colorlinks=true, linkcolor=acc1, urlcolor=acc1]{hyperref}
+
+% ── Page colors ──────────────────────────────────────────────
+\pagecolor{bg}
+\color{txt}
+
+% ── tcolorbox styles ─────────────────────────────────────────
+\tcbset{
+  darkcard/.style={
+    enhanced, breakable,
+    colback=card, colframe=#1, coltitle=white,
+    boxrule=0.8pt, arc=4pt,
+    left=8pt, right=8pt, top=6pt, bottom=6pt,
+    fonttitle=\bfseries\color{#1},
+  },
+  metricbox/.style={
+    enhanced,
+    colback=#1!10!card, colframe=#1,
+    boxrule=1pt, arc=5pt,
+    halign=center, valign=center,
+  }
+}
+
+% ── Section style ─────────────────────────────────────────────
+\usepackage{titlesec}
+\titleformat{\section}
+  {\large\bfseries\color{acc1}}
+  {\thesection}{0.7em}{}[{\color{acc1}\titlerule[0.5pt]}]
+
+\titleformat{\subsection}
+  {\normalsize\bfseries\color{acc2}}
+  {\thesubsection}{0.6em}{}
+
+% ── Helpers ──────────────────────────────────────────────────
+\newcommand{\highlight}[2][acc1]{\textcolor{#1}{\textbf{#2}}}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+
+% =============================================================
+\begin{document}
+
+% ─── PORTADA ─────────────────────────────────────────────────
+\begin{titlepage}
+  \centering
+  \vspace*{1.5cm}
+
+  % Accent line top
+  {\color{acc1}\rule{\linewidth}{1.5pt}}
+  \vspace{0.4cm}
+
+  {\footnotesize\color{mut}\MakeUppercase{Propuesta de Proyecto — Marzo 2026}}
+  \vspace{0.8cm}
+
+  {\Huge\bfseries\color{txt}
+    Agente de Trading MCTS\\[0.3em]
+    Estocástico para TSLA}
+
+  \vspace{0.5cm}
+  {\color{acc1}\rule{\linewidth}{1.5pt}}
+  \vspace{1.2cm}
+
+  % Badge pills
+  \begin{tikzpicture}
+    \foreach \label/\col [count=\i] in {
+      MDP/acc1, MCTS/acc2, GBM/acc3, Backtesting/acc4}{
+      \node[rounded corners=6pt,
+            fill=\col!20!card,
+            draw=\col, line width=0.8pt,
+            text=\col, font=\bfseries\small,
+            minimum width=2.4cm, minimum height=0.65cm]
+        at ({(\i-1)*3.0},0) {\label};
+    }
+  \end{tikzpicture}
+
+  \vspace{1.4cm}
+
+  % Mini-abstract box
+  \begin{tcolorbox}[darkcard=acc1, width=0.88\linewidth,
+    title={Resumen ejecutivo}]
+    Se propone diseñar un \highlight{agente de trading} capaz de tomar
+    decisiones óptimas de compra/venta sobre la acción de Tesla (TSLA)
+    modelando el mercado como un \highlight{Proceso de Decisión de Markov}
+    y empleando \highlight{Monte Carlo Tree Search} (el algoritmo de
+    AlphaGo) para buscar la acción de mayor valor esperado.
+    El entorno estocástico se simula con \highlight{Movimiento Browniano
+    Geométrico} y la estrategia se valida contra \emph{Buy \& Hold}
+    mediante backtesting out-of-sample sobre datos de Yahoo Finance.
+  \end{tcolorbox}
+
+  \vfill
+  {\small\color{mut}
+    \faDatabase\; Datos: Yahoo Finance (TSLA)\quad
+    \faCode\; Algoritmo: MCTS + GBM\quad
+    \faChartLine\; Benchmark: Buy \& Hold}
+\end{titlepage}
+
+% ─── 1. FORMULACIÓN MDP ──────────────────────────────────────
+\section{Formulación: Proceso de Decisión de Markov}
+
+El problema de trading se modela como el MDP $(S, A, P, R)$.
+Cada instante $t$ el agente observa el estado del portafolio,
+elige una acción y recibe una recompensa en forma de retorno logarítmico.
+
+% ── Diagrama ciclo MDP ──────────────────────────────────────
+\begin{center}
+\begin{tikzpicture}[
+  node distance=2.6cm,
+  every node/.style={font=\small},
+  box/.style={rounded corners=6pt, draw=#1, fill=#1!15!card,
+              text=txt, minimum width=2.8cm, minimum height=1.0cm,
+              align=center, font=\bfseries\small, text=txt},
+  arr/.style={-{Stealth[length=7pt]}, thick, color=#1},
+]
+  \node[box=acc1] (S)  {Estado $s_t$\\
+    {\footnotesize\color{mut}$(P_t, C_t, H_t)$}};
+  \node[box=acc2, right=of S] (A)  {Acción $a_t$\\
+    {\footnotesize\color{mut}$\{-k\%,\,0,\,+k\%\}$}};
+  \node[box=acc3, below=1.8cm of A] (E)  {Entorno\\
+    {\footnotesize\color{mut}Mercado / GBM}};
+  \node[box=acc4, below=1.8cm of S] (R)  {Recompensa $R_t$\\
+    {\footnotesize\color{mut}$\ln(V_t/V_{t-1})$}};
+
+  \draw[arr=acc2] (S) -- node[above, text=mut, font=\scriptsize]{decide} (A);
+  \draw[arr=acc3] (A) -- node[right, text=mut, font=\scriptsize]{aplica} (E);
+  \draw[arr=acc4] (E) -- node[below, text=mut, font=\scriptsize]{genera} (R);
+  \draw[arr=acc1] (R) -- node[left,  text=mut, font=\scriptsize]{actualiza} (S);
+\end{tikzpicture}
+\end{center}
+
+\begin{tcolorbox}[darkcard=acc1,
+  title={Componentes del MDP}]
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\linewidth}{@{} l l X @{}}
+  \toprule
+  \color{acc1}\textbf{Símbolo} &
+  \color{acc1}\textbf{Componente} &
+  \color{acc1}\textbf{Definición} \\
+  \midrule
+  $s_t = (P_t, C_t, H_t)$ & Estado &
+    Precio de cierre, capital líquido y acciones en cartera.
+    El valor total es $V_t = C_t + H_t \cdot P_t$. \\
+  $a_t \in \{-k\%,\,0,\,+k\%\}$ & Acción &
+    Vender, mantener o comprar el $k$\,\% del capital disponible. \\
+  $R_t = \ln\!\left(\dfrac{V_t}{V_{t-1}}\right)$ & Recompensa &
+    Retorno logarítmico del portafolio entre dos instantes consecutivos. \\
+  \bottomrule
+\end{tabularx}
+\end{tcolorbox}
+
+% ─── 2. MOTOR MCTS ───────────────────────────────────────────
+\section{Motor MCTS — Las cuatro fases}
+
+El agente itera las siguientes fases para construir un árbol de búsqueda
+asimétrico y seleccionar la acción óptima en cada instante:
+
+% ── Diagrama árbol MCTS ─────────────────────────────────────
+\begin{center}
+\begin{tikzpicture}[
+  level 1/.style={sibling distance=52mm},
+  level 2/.style={sibling distance=22mm},
+  every node/.style={circle, draw, minimum size=0.9cm,
+                     inner sep=1pt, font=\scriptsize\bfseries},
+  edge from parent/.style={draw, -stealth, color=mut, thick},
+  sel/.style   ={draw=acc1, fill=acc1!20!card, text=txt},
+  exp/.style   ={draw=acc2, fill=acc2!20!card, text=txt},
+  roll/.style  ={draw=acc3, fill=acc3!20!card, text=txt, dashed},
+  back/.style  ={draw=acc4, fill=acc4!20!card, text=txt},
+  norm/.style  ={draw=mut,  fill=card,          text=mut},
+]
+% root
+\node[sel] (root) {$s_0$}
+  child { node[norm] (l1) {$s_{1}$} }
+  child { node[sel, edge from parent/.style={draw=acc1,thick,-stealth}]
+            (l2) {$s_{2}^*$}
+    child { node[norm] (l21) {$s_{3}$} }
+    child { node[exp,  edge from parent/.style={draw=acc2,thick,-stealth}]
+              (l22) {$s_{4}$}
+      child[missing] {}
+    }
+    child { node[norm] (l23) {$s_{5}$} }
+  }
+  child { node[norm] (l3) {$s_{6}$} };
+
+% rollout chain
+\node[roll, right=1.2cm of l22] (r1) {$\tau_1$};
+\node[roll, right=1.0cm of r1]  (r2) {$\tau_2$};
+\node[roll, right=1.0cm of r2]  (r3) {$\tau_T$};
+\draw[-stealth, dashed, color=acc3, thick] (l22) -- (r1);
+\draw[-stealth, dashed, color=acc3, thick] (r1) -- (r2);
+\draw[dotted, color=acc3, thick] (r2) -- (r3);
+
+% backprop arrow
+\draw[-stealth, color=acc4, very thick, bend left=40]
+  (r3.north) to node[draw=none, fill=none, rectangle, midway,
+    text=acc4, font=\scriptsize\bfseries] {$R$}
+  (root.east);
+
+% Phase labels
+\node[draw=none, fill=none, rectangle, text=acc1,
+      font=\scriptsize\bfseries, above=0.2cm of root]
+  {\faSearch\; Selección (UCT)};
+\node[draw=none, fill=none, rectangle, text=acc2,
+      font=\scriptsize\bfseries, below left=0.1cm and -0.3cm of l22]
+  {\faPlus\; Expansión};
+\node[draw=none, fill=none, rectangle, text=acc3,
+      font=\scriptsize\bfseries, above=0.2cm of r2]
+  {\faDice\; Rollout (GBM)};
+\node[draw=none, fill=none, rectangle, text=acc4,
+      font=\scriptsize\bfseries, right=0.3cm of root]
+  {\faArrowUp\; Backprop};
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.3em}
+\begin{tcolorbox}[darkcard=acc2, title={Las cuatro fases en detalle}]
+
+\textbf{\color{acc1}\faSearch\; Selección.}
+Desde la raíz $s_0$, el algoritmo desciende por el árbol eligiendo en
+cada nodo la acción que maximiza la política UCT:
+\[
+  a^* = \arg\max_{a \in A}
+    \left[
+      \underbrace{Q(s,a)}_{\text{explotación}}
+      +\; c\sqrt{\dfrac{\ln N(s)}{n(s,a)}}
+    \right]
+\]
+donde $Q(s,a)$ es la recompensa media observada, $N(s)$ el total de
+visitas al nodo padre, $n(s,a)$ las visitas a esa acción y $c$ el
+coeficiente de exploración.
+
+\medskip
+\textbf{\color{acc2}\faPlus\; Expansión.}
+Si el nodo seleccionado tiene acciones no exploradas, se instancia un
+nuevo nodo hijo $s_{t+1}$ aplicando una de ellas.
+
+\medskip
+\textbf{\color{acc3}\faDice\; Simulación (Rollout).}
+Desde el nuevo nodo se simula el mercado hasta el horizonte $T$ usando
+un Movimiento Browniano Geométrico (ver sección siguiente).
+
+\medskip
+\textbf{\color{acc4}\faArrowUp\; Retropropagación.}
+La recompensa acumulada $R$ se propaga hacia la raíz actualizando
+contadores y valores:
+\[
+  n(s,a) \leftarrow n(s,a)+1,\qquad
+  Q(s,a) \leftarrow Q(s,a) + \frac{R - Q(s,a)}{n(s,a)}
+\]
+\end{tcolorbox}
+
+% ─── 3. MODELO ESTOCÁSTICO ───────────────────────────────────
+\section{Modelo estocástico del entorno — GBM}
+
+Durante el rollout el precio futuro de TSLA se simula como un
+\highlight[acc3]{Movimiento Browniano Geométrico}:
+\[
+  P_{t+1} = P_t \cdot \exp\!\left[
+    \left(\mu - \tfrac{\sigma^2}{2}\right)\Delta t
+    + \sigma\sqrt{\Delta t}\; Z
+  \right],\qquad Z \sim \mathcal{N}(0,1)
+\]
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[
+  width=14cm, height=6cm,
+  axis background/.style={fill=card},
+  tick style={color=mut},
+  ticklabel style={color=mut, font=\scriptsize},
+  xlabel={\color{mut}\footnotesize Días de trading},
+  ylabel={\color{mut}\footnotesize Precio TSLA (\$)},
+  title={\color{txt}\small Trayectorias GBM desde $P_0=250\,\$$
+         ($\mu=0.03\%$\,día, $\sigma=1.8\%$\,día)},
+  every axis title/.style={at={(0.5,1.02)}},
+  ymajorgrids=true, grid style={color=card!200!bg, line width=0.3pt},
+  xmin=0, xmax=252, ymin=80, ymax=600,
+  axis line style={color=mut!60},
+  clip=false,
+]
+% Background paths (faint)
+\addplot[acc1!50!card, opacity=0.5, line width=0.7pt, samples=253, domain=0:252, no marks]
+  {250*exp(0.0003*x + 0.018*sqrt(x)*0.8)};
+\addplot[acc2!50!card, opacity=0.5, line width=0.7pt, samples=253, domain=0:252, no marks]
+  {250*exp(0.0003*x - 0.018*sqrt(x)*0.3)};
+\addplot[acc4!50!card, opacity=0.5, line width=0.7pt, samples=253, domain=0:252, no marks]
+  {250*exp(0.0003*x + 0.018*sqrt(x)*1.3)};
+\addplot[acc3!50!card, opacity=0.5, line width=0.7pt, samples=253, domain=0:252, no marks]
+  {250*exp(0.0003*x - 0.018*sqrt(x)*1.0)};
+\addplot[acc1!30!card, opacity=0.4, line width=0.7pt, samples=253, domain=0:252, no marks]
+  {250*exp(0.0003*x + 0.018*sqrt(x)*0.2)};
+\addplot[acc2!30!card, opacity=0.4, line width=0.7pt, samples=253, domain=0:252, no marks]
+  {250*exp(0.0003*x - 0.018*sqrt(x)*1.6)};
+\addplot[acc4!30!card, opacity=0.4, line width=0.7pt, samples=253, domain=0:252, no marks]
+  {250*exp(0.0003*x + 0.018*sqrt(x)*1.8)};
+\addplot[mut!60!card, opacity=0.35, line width=0.7pt, samples=253, domain=0:252, no marks]
+  {250*exp(0.0003*x - 0.018*sqrt(x)*2.0)};
+% Two highlighted paths
+\addplot[acc2, line width=2pt, samples=253, domain=0:252, no marks]
+  {250*exp(0.0006*x + 0.018*sqrt(x)*0.4)};
+\addplot[acc3, line width=2pt, samples=253, domain=0:252, no marks]
+  {250*exp(-0.0001*x - 0.018*sqrt(x)*0.55)};
+\addplot[color=mut, dashed, line width=0.8pt] coordinates {(0,250)(252,250)};
+\node[text=mut, font=\scriptsize] at (axis cs:240, 262) {$P_0$};
+\end{axis}
+\end{tikzpicture}
+\end{center}
+
+\begin{tcolorbox}[darkcard=acc3, title={Parámetros del modelo}]
+\renewcommand{\arraystretch}{1.35}
+\begin{tabularx}{\linewidth}{@{} c l X l @{}}
+  \toprule
+  \color{acc3}\textbf{Parámetro} &
+  \color{acc3}\textbf{Significado} &
+  \color{acc3}\textbf{Descripción} &
+  \color{acc3}\textbf{Valor típico} \\
+  \midrule
+  $\mu$        & Deriva        & Retorno medio diario histórico de TSLA
+                               & $\approx 0.03\%$ \\
+  $\sigma$     & Volatilidad   & Desviación estándar diaria de los retornos
+                               & $\approx 1.8\%$ \\
+  $\Delta t$   & Paso temporal & Granularidad de la simulación
+                               & 1 día \\
+  $T$          & Horizonte     & Duración máxima del rollout
+                               & 252 días (1 año) \\
+  \bottomrule
+\end{tabularx}
+\end{tcolorbox}
+
+% ─── 4. EVALUACIÓN ───────────────────────────────────────────
+\section{Evaluación empírica — Backtesting}
+
+El modelo se validará con datos históricos de TSLA obtenidos de
+\highlight{Yahoo Finance} usando validación cruzada temporal
+(\emph{walk-forward}). Se compararán las siguientes métricas frente
+a la estrategia pasiva \emph{Buy \& Hold}:
+
+\begin{center}
+\begin{tikzpicture}[node distance=0cm]
+  \node[rounded corners=6pt, draw=acc1, fill=acc1!12!card,
+        text width=6cm, align=center, inner sep=12pt] (roi) {
+    {\color{acc1}\Large\bfseries ROI}\\[4pt]
+    {\color{mut}\footnotesize Rendimiento acumulado}\\[6pt]
+    $\displaystyle\frac{V_T - V_0}{V_0}$\\[6pt]
+    {\color{mut}\scriptsize Mide el retorno total sobre el periodo}
+  };
+  \node[rounded corners=6pt, draw=acc2, fill=acc2!12!card,
+        text width=6cm, align=center, inner sep=12pt,
+        right=1cm of roi] (sharpe) {
+    {\color{acc2}\Large\bfseries Sharpe}\\[4pt]
+    {\color{mut}\footnotesize Retorno ajustado por riesgo}\\[6pt]
+    $\displaystyle S = \frac{\mathbb{E}[R_p - R_f]}{\sigma_p}$\\[6pt]
+    {\color{mut}\scriptsize Penaliza estrategias de alta varianza}
+  };
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.5em}
+
+\begin{tcolorbox}[darkcard=acc4, title={Esquema de validación}]
+\begin{enumerate}[leftmargin=*, itemsep=3pt]
+  \item Descargar serie histórica de TSLA (mínimo 3 años).
+  \item Dividir en ventanas de entrenamiento y test (\emph{walk-forward}).
+  \item Ejecutar el agente MCTS en cada ventana de test.
+  \item Calcular ROI y Sharpe para MCTS y \emph{Buy \& Hold}.
+  \item Comparar distribuciones de retornos con test estadístico.
+\end{enumerate}
+\end{tcolorbox}
+
+% ─── 5. EXTENSIONES ──────────────────────────────────────────
+\section{Extensiones posibles}
+
+\begin{tcolorbox}[darkcard=mut]
+\begin{itemize}[leftmargin=*, itemsep=4pt]
+  \item \highlight[acc1]{Estado enriquecido}: añadir indicadores técnicos
+    (RSI, MACD, Bandas de Bollinger) al vector de estado $s_t$.
+  \item \highlight[acc2]{Función de valor aprendida}: sustituir el rollout
+    GBM por una red neuronal (estilo AlphaZero) entrenada sobre datos
+    históricos.
+  \item \highlight[acc3]{Múltiples activos}: extender el espacio de acciones
+    a una cartera de activos correlacionados.
+  \item \highlight[acc4]{Costes de transacción}: incorporar comisiones y
+    \emph{slippage} en la función de recompensa.
+\end{itemize}
+\end{tcolorbox}
+
+\vfill
+{\footnotesize\color{mut}\centering
+  Propuesta elaborada para evaluación del grupo · Marzo 2026 ·
+  Datos: Yahoo Finance · Algoritmo: MCTS + GBM}
+
+\end{document}
