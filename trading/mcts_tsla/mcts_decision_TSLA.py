@@ -1,20 +1,49 @@
 """
-mcts_decision_hoy.py
-====================
+mcts_decision_TSLA.py
+=====================
 Herramienta de apoyo a la decisión de trading para ANTES de la apertura.
 
 Descarga los datos históricos más recientes, inicializa el estado con
 la cartera REAL del usuario y ejecuta MCTS una sola vez para recomendar
 la mejor acción del día (comprar, vender o mantener).
 
-Uso
----
+Además registra cada ejecución en un CSV de log para poder evaluar
+a posteriori la calidad de las recomendaciones.
+
+Uso manual
+----------
     1. Ajusta TU_EFECTIVO y TUS_ACCIONES con tu situación real.
     2. Ejecuta el script antes de la apertura del mercado.
     3. Lee el ranking de acciones y la recomendación final.
 
+Automatización
+--------------
+    Gestionado por launchd (macOS). Ver com.mcts.tsla.decision.plist.
+    Se ejecuta automáticamente cada día laborable a las 9:00 AM.
+    Los resultados se guardan en decisiones_TSLA.csv y en los PNGs.
+
+Log CSV
+-------
+    decisiones_TSLA.csv — una fila por ejecución con:
+      fecha, ticker, precio_cierre, rsi_14, ma20,
+      accion_recomendada, valor_cartera, reward_mejor, ranking_json
+
 Dependencias: numpy, matplotlib, yfinance
 (todas presentes si ya funciona mcts_simple.py)
+
+Gestión del agente launchd
+--------------------------
+    # Ver si está registrado
+    launchctl list | grep mcts
+
+    # Ejecutar manualmente ahora (para probar)
+    launchctl start com.mcts.tsla.decision
+
+    # Desactivar
+    launchctl unload ~/Library/LaunchAgents/com.mcts.tsla.decision.plist
+
+    # Ver logs
+    tail -f /Users/carlosruiznavarro/MonteCarlo/mcts/trading/mcts_tsla/launchd_stdout.log
 
 ──────────────────────────────────────────────────────────────────────────────
 FUNDAMENTOS TEÓRICOS: MCTS + UCT
@@ -83,9 +112,12 @@ from mcts_simple import (
     VENTANA_CALIB,              # ventana para estimar μ y σ del GBM en los rollouts
 )
 
+import csv
+import json
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from datetime import date
 
 
 # =============================================================================
@@ -95,6 +127,87 @@ import matplotlib.gridspec as gridspec
 
 TU_EFECTIVO   = 100.0    # dinero disponible en cuenta (USD)
 TUS_ACCIONES  = 0.0      # número de acciones de TSLA en cartera
+
+# Ruta del log CSV — mismo directorio que este script
+_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_CSV = os.path.join(_DIR, "decisiones_TSLA.csv")
+
+# Cabecera del CSV (se escribe solo si el archivo no existe aún)
+_CSV_CABECERA = [
+    "fecha", "ticker", "precio_cierre", "rsi_14", "ma20",
+    "accion_recomendada", "valor_cartera", "reward_mejor", "ranking_json",
+]
+
+
+# =============================================================================
+# FUNCIÓN DE REGISTRO EN CSV
+# =============================================================================
+
+def _registrar_decision(
+    fecha: str,
+    precio: float,
+    rsi: float,
+    ma20: float,
+    accion: str,
+    valor: float,
+    ranking: list,
+) -> None:
+    """
+    Añade una fila al CSV de log con la decisión del día.
+
+    Si el archivo no existe lo crea con cabecera.
+    Si ya existe una fila para la misma fecha la sobreescribe
+    (evita duplicados en caso de reejecutar el mismo día).
+
+    Parámetros
+    ----------
+    fecha   : Fecha de la decisión (YYYY-MM-DD).
+    precio  : Precio de cierre del activo.
+    rsi     : RSI(14) calculado sobre la serie histórica.
+    ma20    : Media móvil de 20 días.
+    accion  : Acción recomendada por MCTS (p. ej. "COMPRAR_25%").
+    valor   : Valor total de la cartera en ese momento.
+    ranking : Lista de tuplas (accion, Q/N) ordenada de mejor a peor.
+    """
+    archivo_nuevo = not os.path.exists(LOG_CSV)
+
+    # Leemos filas existentes para detectar duplicado de fecha
+    filas = []
+    if not archivo_nuevo:
+        with open(LOG_CSV, newline="", encoding="utf-8") as f:
+            filas = list(csv.DictReader(f))
+
+    # Fila nueva a insertar/actualizar
+    reward_mejor = ranking[0][1] if ranking else float("nan")
+    fila_nueva = {
+        "fecha":             fecha,
+        "ticker":            TICKER,
+        "precio_cierre":     f"{precio:.4f}",
+        "rsi_14":            f"{rsi:.2f}",
+        "ma20":              f"{ma20:.4f}",
+        "accion_recomendada": accion,
+        "valor_cartera":     f"{valor:.4f}",
+        "reward_mejor":      f"{reward_mejor:.6f}",
+        "ranking_json":      json.dumps({a: round(v, 6) for a, v in ranking}),
+    }
+
+    # Sustituir si ya existe fila para esta fecha, si no añadir
+    actualizado = False
+    for i, fila in enumerate(filas):
+        if fila.get("fecha") == fecha:
+            filas[i] = fila_nueva
+            actualizado = True
+            break
+    if not actualizado:
+        filas.append(fila_nueva)
+
+    # Reescribir el CSV completo
+    with open(LOG_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=_CSV_CABECERA)
+        writer.writeheader()
+        writer.writerows(filas)
+
+    print(f"[LOG] Decisión registrada en: {LOG_CSV}")
 
 
 # =============================================================================
@@ -136,24 +249,10 @@ def decision_hoy(efectivo: float, num_acciones: float) -> None:
     """
 
     # ── 1. Descargar datos históricos hasta ayer ───────────────────────────
-    # precios[t] = precio de cierre del día t, con t = 0..T (T = ayer).
-    # Esta serie cumple dos roles en MCTS:
-    #   a) CALIBRACIÓN del proceso de precios para los rollouts:
-    #      μ = media de log-retornos diarios  (drift del GBM)
-    #      σ = desv. estándar de log-retornos (volatilidad del GBM)
-    #      Ambos se estiman sobre los últimos VENTANA_CALIB días.
-    #   b) INICIALIZACIÓN del estado raíz: RSI(14) y MA(20) se calculan
-    #      sobre los últimos 14/20 días de esta serie.
     precios = descargar_precios(TICKER, PERIOD)
-    dia_hoy = len(precios) - 1   # índice del último día disponible (ayer)
+    dia_hoy = len(precios) - 1
 
     # ── 2. Construir el estado raíz s₀ del árbol MCTS ─────────────────────
-    # El nodo raíz contiene la observación completa del entorno:
-    #   s₀ = { dia, efectivo, acciones, precio, rsi, ma20 }
-    # En la formulación MDP subyacente al MCTS:
-    #   · s₀ es el estado inicial del proceso de decisión
-    #   · Las acciones A son las transiciones posibles desde s₀
-    #   · La función de recompensa r(s,a,s') se estima con los rollouts GBM
     estado = crear_estado(
         dia          = dia_hoy,
         efectivo     = efectivo,
@@ -162,7 +261,7 @@ def decision_hoy(efectivo: float, num_acciones: float) -> None:
         precios_hist = precios,
     )
 
-    valor_actual = valor_cartera(estado)      # V(s₀) = efectivo + acciones × precio
+    valor_actual = valor_cartera(estado)
     precio_hoy   = float(precios[dia_hoy])
 
     # ── 3. Resumen del estado actual ───────────────────────────────────────
@@ -177,53 +276,25 @@ def decision_hoy(efectivo: float, num_acciones: float) -> None:
     print(f"  Valor total         : {valor_actual:>10,.2f} $")
     print(f"  RSI (14d)           : {estado['rsi']:>10.1f}")
     print(f"  MA20                : {estado['ma20']:>10.2f} $")
-    # RSI y MA20 enriquecen el vector de estado del nodo raíz.
-    # En un MCTS con política de rollout informada podrían usarse para
-    # sesgar el muestreo aleatorio (p. ej., favorecer compras si RSI < 30).
     _interpretar_indicadores(estado, precio_hoy)
     print(sep)
 
     # ── 4. Ejecutar MCTS ───────────────────────────────────────────────────
-    # Núcleo del algoritmo: K iteraciones del ciclo selección–expansión–
-    # rollout–backpropagación sobre el árbol con raíz en s₀.
-    #
-    # Complejidad por iteración: O(|A| + H)
-    #   · |A| = tamaño del espacio de acciones (número de ramas)
-    #   · H   = DIAS_ROLLOUT (longitud de cada simulación Monte Carlo)
-    #
-    # La constante de exploración C en UCT controla el trade-off:
-    #   · C grande → explora más ramas nuevas antes de profundizar
-    #   · C pequeño → explota las ramas ya conocidas como buenas
-    # El valor óptimo teórico es C = √2 (Kocsis & Szepesvári 2006),
-    # aunque en la práctica se ajusta empíricamente por dominio.
     print(f"\n  Ejecutando MCTS ({ITERACIONES} iteraciones, "
           f"horizonte {DIAS_ROLLOUT} días)...\n")
 
-    # Semilla fija → mismos números aleatorios en cada ejecución del día,
-    # garantizando reproducibilidad de la recomendación.
     rng    = np.random.default_rng(SEMILLA)
     accion, historial = ejecutar_mcts(
         estado, precios, rng, registrar_convergencia=True
     )
-    # historial = { acción_a: [Q(a)/N(a) tras iter 1, …, tras iter K] }
-    # La última entrada de cada lista es la estimación final de la
-    # recompensa media de esa acción: E[r | s₀, a] ≈ Q(a)/N(a).
-    # Por la ley de grandes números, Q(a)/N(a) → E[r|s₀,a] cuando K→∞.
 
     # ── 5. Ranking de acciones por recompensa media final ──────────────────
-    # Tomamos el valor convergido Q(a)/N(a) al final de las K iteraciones.
-    # En AlphaGo/AlphaZero se usa argmax N(a) (más robusto ante outliers);
-    # aquí usamos argmax Q(a)/N(a) que es equivalente cuando los rollouts
-    # son estacionarios y K es suficientemente grande.
-    medias = {a: vals[-1] for a, vals in historial.items() if vals}
+    medias  = {a: vals[-1] for a, vals in historial.items() if vals}
     ranking = sorted(medias.items(), key=lambda x: x[1], reverse=True)
 
     print(f"  {'Acción':<14} {'Reward vs B&H':>14}  {'Señal':>8}")
     print("  " + "-" * 42)
     for a, v in ranking:
-        # v = Q(a)/N(a): recompensa media relativa al benchmark Buy & Hold
-        # v > 0  →  la acción genera alfa positivo frente a no operar
-        # v < 0  →  la acción destruye valor respecto al benchmark pasivo
         barra  = _barra(v, medias)
         marca  = "  ◄ ELEGIDA" if a == accion else ""
         print(f"  {a:<14} {v:>+14.5f}  {barra}{marca}")
@@ -233,24 +304,27 @@ def decision_hoy(efectivo: float, num_acciones: float) -> None:
     _interpretar_accion(accion, efectivo, num_acciones, precio_hoy)
     print(f"{sep}\n")
 
-    # ── 6. Gráfico de convergencia UCB ────────────────────────────────────
-    # Traza Q(a)/N(a) vs. número de iteración para cada acción.
-    # Permite verificar convergencia: si las curvas se estabilizan antes
-    # de K iteraciones, el presupuesto computacional es suficiente.
-    # Si aún oscilan al final, conviene aumentar ITERACIONES.
-    # Tasa teórica de convergencia: error estándar ~ O(1/√N) por CLT →
-    # doblar iteraciones reduce la incertidumbre aproximadamente un 30 %.
-    graficar_convergencia_ucb(historial)
+    # ── 6. Guardar decisión en el log CSV ─────────────────────────────────
+    _registrar_decision(
+        fecha   = date.today().isoformat(),
+        precio  = precio_hoy,
+        rsi     = estado["rsi"],
+        ma20    = estado["ma20"],
+        accion  = accion,
+        valor   = valor_actual,
+        ranking = ranking,
+    )
 
-    # ── 7. Gráfico adicional: ranking visual de acciones ──────────────────
-    # Muestra el estado final del árbol MCTS: Q(a)/N(a) para cada acción,
-    # ordenado de mejor a peor. La acción a* se resalta con borde naranja.
+    # ── 7. Gráficos ────────────────────────────────────────────────────────
+    graficar_convergencia_ucb(historial)
     _graficar_ranking(ranking, accion)
 
-    import subprocess
-    subprocess.Popen(["open",
-                      "mcts_convergencia_hoy.png",
-                      "mcts_ranking_acciones.png"])
+    # Abrir imágenes solo en ejecución interactiva (no en launchd/cron)
+    if sys.stdout.isatty():
+        import subprocess
+        subprocess.Popen(["open",
+                          "mcts_convergencia_hoy.png",
+                          "mcts_ranking_acciones.png"])
 
 
 # =============================================================================
@@ -260,13 +334,6 @@ def decision_hoy(efectivo: float, num_acciones: float) -> None:
 def _interpretar_indicadores(estado: dict, precio: float) -> None:
     """
     Imprime una lectura rápida de RSI y MA20.
-
-    Nota MCTS: RSI y MA20 son variables del vector de estado del nodo raíz.
-    En un MCTS con política de rollout informada (tree policy no uniforme),
-    estos indicadores técnicos podrían sesgar el muestreo aleatorio de
-    acciones durante la simulación: por ejemplo, incrementar la probabilidad
-    de elegir COMPRAR cuando RSI < 30 (sobreventa) y precio < MA20.
-    En la implementación actual el rollout es uniforme (política por defecto).
     """
     rsi  = estado["rsi"]
     ma20 = estado["ma20"]
@@ -285,18 +352,8 @@ def _interpretar_accion(accion: str, efectivo: float,
                          num_acciones: float, precio: float) -> None:
     """
     Traduce la acción elegida a términos concretos de cartera.
-
-    En la nomenclatura MCTS: convierte a* (índice en el espacio discreto A)
-    a una orden ejecutable en el mercado, calculando el importe o número de
-    acciones según la fracción fija asignada a cada etiqueta de acción.
-    Esta conversión no forma parte del árbol MCTS; es solo la interpretación
-    de la decisión óptima hallada por el algoritmo.
     """
     from mcts_simple import _FRACCION_ACCION
-    # _FRACCION_ACCION: A → [0,1]  mapea cada acción a su fracción de cartera
-    #   COMPRAR_25 → 0.25 del efectivo disponible
-    #   VENDER_50  → 0.50 de las acciones en cartera
-    #   HOLD       → 0.00 (sin transacción)
     fraccion = _FRACCION_ACCION.get(accion, 0.0)
 
     if accion.startswith("COMPRAR"):
@@ -312,18 +369,12 @@ def _interpretar_accion(accion: str, efectivo: float,
         print(f"  → Vender aprox. {acciones_vend:.4f} acciones "
               f"(~{importe:,.2f} $)")
     else:
-        # HOLD: acción nula → el árbol MCTS no encontró ventaja en operar
         print(f"  No operar hoy. Mantener la cartera sin cambios.")
 
 
 def _barra(valor: float, todos: dict, ancho: int = 8) -> str:
     """
     Genera una mini barra de texto proporcional al valor relativo.
-
-    Normaliza Q(a)/N(a) al intervalo [0, ancho] para representar
-    visualmente la diferencia relativa entre las recompensas medias
-    de cada acción. Es solo una ayuda de presentación en terminal;
-    no influye en la decisión MCTS.
     """
     vmin = min(todos.values())
     vmax = max(todos.values())
@@ -335,19 +386,7 @@ def _barra(valor: float, todos: dict, ancho: int = 8) -> str:
 
 def _graficar_ranking(ranking: list, accion_elegida: str) -> None:
     """
-    Genera un gráfico de barras horizontales con el ranking de acciones
-    coloreado por tipo (compra = verde, venta = rojo, mantener = azul).
-
-    INTERPRETACIÓN EN TÉRMINOS MCTS:
-      · Cada barra representa un nodo hijo directo de la raíz s₀.
-      · La longitud de la barra = Q(a)/N(a), la recompensa media estimada
-        de aplicar la acción a sobre el estado real de hoy.
-      · Eje X = 0 es el benchmark Buy & Hold: valores > 0 indican que la
-        acción supera al inversor pasivo en las simulaciones Monte Carlo.
-      · La barra con borde naranja es a* = argmax Q(a)/N(a): la acción
-        que el árbol MCTS recomienda ejecutar hoy.
-      · El orden descendente refleja el ranking inducido por UCT tras K
-        iteraciones de exploración–explotación.
+    Genera un gráfico de barras horizontales con el ranking de acciones.
     """
     import matplotlib.pyplot as plt
     from mcts_simple import COLORES_ACCION
@@ -366,19 +405,16 @@ def _graficar_ranking(ranking: list, accion_elegida: str) -> None:
     bars = ax.barh(acciones, valores, color=colores, edgecolor="white",
                    linewidth=0.6, height=0.65)
 
-    # Resaltar a* (acción elegida por MCTS) con borde naranja grueso
     for bar, a in zip(bars, acciones):
         if a == accion_elegida:
             bar.set_edgecolor("#f39c12")
             bar.set_linewidth(2.5)
 
-    # x = 0: umbral neutro → a la derecha se supera al benchmark B&H
     ax.axvline(0, color="black", lw=0.8)
     ax.set_xlabel("Recompensa media Q(a)/N(a) relativa a B&H (log-retorno)")
     ax.set_title(f"Acción recomendada: {accion_elegida}",
                  fontsize=10, style="italic", color="#e67e22")
 
-    # Etiquetas numéricas: muestran Q(a)/N(a) con 5 decimales por barra
     for bar, val in zip(bars, valores):
         x = bar.get_width()
         ax.text(x + (0.00005 if x >= 0 else -0.00005),
@@ -387,7 +423,7 @@ def _graficar_ranking(ranking: list, accion_elegida: str) -> None:
                 va="center", ha="left" if x >= 0 else "right",
                 fontsize=8)
 
-    ax.invert_yaxis()  # la mejor acción (mayor Q/N) queda en la parte superior
+    ax.invert_yaxis()
     ax.grid(axis="x", alpha=0.25)
     plt.tight_layout()
     plt.savefig("mcts_ranking_acciones.png", dpi=150, bbox_inches="tight")

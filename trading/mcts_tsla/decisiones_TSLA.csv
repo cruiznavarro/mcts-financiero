@@ -1,0 +1,2 @@
+fecha,ticker,precio_cierre,rsi_14,ma20,accion_recomendada,valor_cartera,reward_mejor,ranking_json
+2026-04-13,TSLA,348.9500,41.97,370.8505,VENDER_25,100.0000,0.154743,"{""COMPRAR_10"": 0.154743, ""MANTENER"": 0.145944, ""COMPRAR_25"": 0.145923, ""COMPRAR_50"": 0.123558, ""COMPRAR_75"": 0.117003, ""COMPRAR_100"": 0.115928}"

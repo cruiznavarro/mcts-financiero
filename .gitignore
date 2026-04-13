@@ -17,3 +17,7 @@ __pycache__/
 
 # Claude/editor
 .claude/
+
+# Logs de sistema
+launchd_stderr.log
+launchd_stdout.log
