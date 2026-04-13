@@ -1,6 +1,6 @@
 """
-mcts_simple.py
-==============
+mcts_simple_NASDAQ.py
+=====================
 Evaluación simplificada de un activo financiero con Monte Carlo Tree Search.
 
 Objetivo didáctico: entender los 4 pasos del MCTS aplicados a trading,
@@ -32,8 +32,8 @@ import json
 # Todos los ajustes del experimento están aquí para fácil modificación.
 # =============================================================================
 
-TICKER        = "TSLA"   # Símbolo del activo a analizar
-PERIOD        = "2y"     # Período de descarga: "1y", "6mo", "2y", etc.
+TICKER        = "EQQB.DE"  # Invesco NASDAQ-100 UCITS ETF (XETRA)
+PERIOD        = "2y"       # Período de descarga: "1y", "6mo", "2y", etc.
 CAPITAL_INIT  = 10_000   # Capital inicial en USD
 ITERACIONES   = 1000     # Iteraciones MCTS por decisión (más = mejor, más lento)
 DIAS_ROLLOUT  = 60       # Días simulados en cada rollout (horizonte de visión)
