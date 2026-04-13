@@ -1,6 +1,6 @@
 """
-mcts_simple.py
-==============
+mcts_simple_TSLA_local.py
+=========================
 Evaluación simplificada de un activo financiero con Monte Carlo Tree Search.
 
 Objetivo didáctico: entender los 4 pasos del MCTS aplicados a trading,
@@ -17,6 +17,7 @@ Dependencias: numpy, matplotlib, yfinance
 """
 
 import math
+import os
 import random
 import numpy as np
 import matplotlib.pyplot as plt
@@ -34,6 +35,7 @@ import json
 
 TICKER        = "TSLA"   # Símbolo del activo a analizar
 PERIOD        = "2y"     # Período de descarga: "1y", "6mo", "2y", etc.
+DATOS_LOCAL   = os.path.join(os.path.dirname(__file__), f"precios_{TICKER}.csv")
 CAPITAL_INIT  = 10_000   # Capital inicial en USD
 ITERACIONES   = 1000     # Iteraciones MCTS por decisión (más = mejor, más lento)
 DIAS_ROLLOUT  = 60       # Días simulados en cada rollout (horizonte de visión)
@@ -45,18 +47,17 @@ SEMILLA       = 42       # Semilla para reproducibilidad
 # SECCIÓN 1: DESCARGA DE DATOS
 # =============================================================================
 
-def descargar_precios(ticker: str, periodo: str) -> np.ndarray:
+def descargar_y_guardar_precios(ticker: str, periodo: str,
+                                ruta: str = DATOS_LOCAL) -> None:
     """
-    Descarga los precios de cierre ajustados del activo indicado.
+    Descarga los precios de cierre de yfinance y los guarda en un CSV local.
+    Ejecutar una sola vez (o cuando quieras actualizar los datos).
 
     Parámetros
     ----------
-    ticker  : Símbolo del activo (ej. "TSLA", "AAPL").
-    periodo : Período en formato yfinance (ej. "1y", "6mo").
-
-    Retorna
-    -------
-    np.ndarray : Array 1-D con precios de cierre, en orden cronológico.
+    ticker  : Símbolo del activo (ej. "TSLA").
+    periodo : Período en formato yfinance (ej. "2y").
+    ruta    : Ruta donde se guardará el CSV (por defecto precios_TSLA.csv).
     """
     print(f"[INFO] Descargando {ticker} ({periodo})...")
     df = yf.download(ticker, period=periodo, progress=False, auto_adjust=True)
@@ -64,11 +65,35 @@ def descargar_precios(ticker: str, periodo: str) -> np.ndarray:
     if df.empty:
         raise ValueError(f"No hay datos para '{ticker}'.")
 
-    # Extraemos la columna de cierre y la convertimos a array plano
     precios = df["Close"].dropna().to_numpy(dtype=float).flatten()
+    np.savetxt(ruta, precios, delimiter=",", header="close", comments="")
+    print(f"[INFO] {len(precios)} sesiones guardadas en: {ruta}")
+    print(f"       Precio inicial: {precios[0]:.2f}$  "
+          f"Precio final: {precios[-1]:.2f}$")
 
-    print(f"[INFO] {len(precios)} sesiones. "
-          f"Precio inicial: {precios[0]:.2f}$  "
+
+def descargar_precios(ticker: str, periodo: str,
+                      ruta: str = DATOS_LOCAL) -> np.ndarray:
+    """
+    Carga los precios desde el CSV local. Si no existe, los descarga primero.
+
+    Parámetros
+    ----------
+    ticker  : Símbolo del activo (ej. "TSLA").
+    periodo : Período en formato yfinance (ej. "2y").
+    ruta    : Ruta del CSV local.
+
+    Retorna
+    -------
+    np.ndarray : Array 1-D con precios de cierre, en orden cronológico.
+    """
+    if not os.path.exists(ruta):
+        print(f"[INFO] Archivo local no encontrado. Descargando datos...")
+        descargar_y_guardar_precios(ticker, periodo, ruta)
+
+    precios = np.loadtxt(ruta, delimiter=",", skiprows=1)
+    print(f"[INFO] {len(precios)} sesiones cargadas desde: {ruta}")
+    print(f"       Precio inicial: {precios[0]:.2f}$  "
           f"Precio final: {precios[-1]:.2f}$")
     return precios
 
@@ -985,12 +1010,12 @@ def graficar(precios: np.ndarray, cartera_mcts: list,
 
     # Calculamos el drawdown del alfa (MCTS relativo a B&H)
     arr_bah   = np.array(cartera_bah)
-    alfa      = arr_pv / arr_bah          # ratio > 1 → MCTS supera a B&H
+    alfa      = arr_pv / arr_bah
     pico_alfa = np.maximum.accumulate(alfa)
-    dd_alfa   = (alfa - pico_alfa) / pico_alfa * 100  # en porcentaje
+    dd_alfa   = (alfa - pico_alfa) / pico_alfa * 100
 
-    # Alfa = exceso de retorno MCTS sobre B&H en cada día
-    alfa_pct = (arr_pv / arr_bah - 1) * 100  # en porcentaje
+    # Alfa en porcentaje para la gráfica de evolución
+    alfa_pct = (alfa - 1) * 100
 
     # ── Figura y paneles ───────────────────────────────────────────────────
     fig = plt.figure(figsize=(14, 13))

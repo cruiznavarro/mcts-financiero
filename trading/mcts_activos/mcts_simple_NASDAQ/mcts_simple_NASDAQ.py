@@ -983,8 +983,17 @@ def graficar(precios: np.ndarray, cartera_mcts: list,
     pico_pv = np.maximum.accumulate(arr_pv)
     dd_pv   = (arr_pv - pico_pv) / pico_pv * 100  # en porcentaje
 
+    # Calculamos el drawdown del alfa (MCTS relativo a B&H)
+    arr_bah   = np.array(cartera_bah)
+    alfa      = arr_pv / arr_bah
+    pico_alfa = np.maximum.accumulate(alfa)
+    dd_alfa   = (alfa - pico_alfa) / pico_alfa * 100
+
+    # Alfa en porcentaje para la gráfica de evolución
+    alfa_pct = (alfa - 1) * 100
+
     # ── Figura y paneles ───────────────────────────────────────────────────
-    fig = plt.figure(figsize=(14, 10))
+    fig = plt.figure(figsize=(14, 13))
     fig.suptitle(
         f"MCTS Trading simplificado — {TICKER} ({PERIOD})\n"
         f"Iteraciones por decisión: {ITERACIONES}  |  "
@@ -992,7 +1001,7 @@ def graficar(precios: np.ndarray, cartera_mcts: list,
         f"Capital inicial: {CAPITAL_INIT:,}$",
         fontsize=12, fontweight="bold", y=0.98,
     )
-    gs = gridspec.GridSpec(3, 1, height_ratios=[3, 3, 2], hspace=0.45)
+    gs = gridspec.GridSpec(4, 1, height_ratios=[3, 3, 2, 2], hspace=0.50)
 
     # ── Panel 1: Precio + señales ──────────────────────────────────────────
     ax1 = fig.add_subplot(gs[0])
@@ -1028,19 +1037,39 @@ def graficar(precios: np.ndarray, cartera_mcts: list,
     ax2.legend(fontsize=9)
     ax2.grid(alpha=0.25)
 
-    # ── Panel 3: Drawdown de la cartera MCTS ─────────────────────────────
+    # ── Panel 3: Alfa MCTS vs B&H ─────────────────────────────────────────
     ax3 = fig.add_subplot(gs[2])
-    ax3.fill_between(dias, dd_pv, 0, color="#c0392b", alpha=0.45,
-                     label="Drawdown MCTS")
-    ax3.plot(dias, dd_pv, color="#c0392b", lw=0.8)
+    ax3.fill_between(dias, alfa_pct, 0,
+                     where=[v >= 0 for v in alfa_pct],
+                     color="#27ae60", alpha=0.35, label="Alfa positivo")
+    ax3.fill_between(dias, alfa_pct, 0,
+                     where=[v < 0 for v in alfa_pct],
+                     color="#e74c3c", alpha=0.35, label="Alfa negativo")
+    ax3.plot(dias, alfa_pct, color="#2c3e50", lw=0.8)
     ax3.axhline(0, color="gray", lw=0.8)
 
-    ax3.set_title("Drawdown de la cartera MCTS (%)",
+    ax3.set_title("Alfa MCTS vs B&H (%)",
                   fontsize=10, fontweight="bold")
-    ax3.set_ylabel("Drawdown (%)")
-    ax3.set_xlabel("Día de trading")
+    ax3.set_ylabel("Alfa (%)")
     ax3.legend(fontsize=9)
     ax3.grid(alpha=0.25)
+
+    # ── Panel 4: Drawdown MCTS + Drawdown del Alfa ───────────────────────
+    ax4 = fig.add_subplot(gs[3])
+    ax4.fill_between(dias, dd_pv, 0, color="#c0392b", alpha=0.30,
+                     label="Drawdown MCTS")
+    ax4.plot(dias, dd_pv, color="#c0392b", lw=0.8)
+    ax4.fill_between(dias, dd_alfa, 0, color="#8e44ad", alpha=0.30,
+                     label="Drawdown Alfa (MCTS vs B&H)")
+    ax4.plot(dias, dd_alfa, color="#8e44ad", lw=0.8)
+    ax4.axhline(0, color="gray", lw=0.8)
+
+    ax4.set_title("Drawdown MCTS y Drawdown del Alfa vs B&H (%)",
+                  fontsize=10, fontweight="bold")
+    ax4.set_ylabel("Drawdown (%)")
+    ax4.set_xlabel("Día de trading")
+    ax4.legend(fontsize=9)
+    ax4.grid(alpha=0.25)
 
     plt.savefig("mcts_simple_resultado.png", dpi=150, bbox_inches="tight")
     plt.close()
