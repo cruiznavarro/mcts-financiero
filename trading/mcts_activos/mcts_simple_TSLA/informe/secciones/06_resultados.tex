@@ -66,8 +66,9 @@ Los resultados revelan una tensión interesante: MCTS obtiene un ROI total signi
 \label{subsec:evolucion-cartera}
 
 \begin{figure}[H]
-    \centering
-    \includegraphics[width=\linewidth]{figuras/mcts_simple_resultado.png}
+    \begin{adjustbox}{center}
+        \includegraphics[width=1.2\linewidth]{figuras/mcts_simple_resultado.png}
+    \end{adjustbox}
     \caption{Panel de resultados. De arriba abajo: (1) precio de TSLA con señales COMPRAR/VENDER; (2) evolución de la cartera (base~100) MCTS vs.\ B\&H; (3) alfa relativa MCTS vs.\ B\&H; (4) drawdown de la cartera MCTS (rojo) y drawdown del alfa (morado).}
     \label{fig:resultado-principal}
 \end{figure}
@@ -87,8 +88,9 @@ La Figura~\ref{fig:resultado-principal} contiene cuatro paneles que deben leerse
 \label{subsec:exposicion}
 
 \begin{figure}[H]
-    \centering
-    \includegraphics[width=\linewidth]{figuras/mcts_exposicion_dinamica.png}
+    \begin{adjustbox}{center}
+        \includegraphics[width=1.2\linewidth]{figuras/mcts_exposicion_dinamica.png}
+    \end{adjustbox}
     \caption{Exposición dinámica. Arriba: precio de TSLA con señales. Abajo: porcentaje del capital invertido en TSLA (azul) y referencia B\&H al 100\,\% (gris).}
     \label{fig:exposicion}
 \end{figure}
@@ -100,8 +102,9 @@ La Figura~\ref{fig:exposicion} muestra que la política aprendida por MCTS es es
 \label{subsec:ranking}
 
 \begin{figure}[H]
-    \centering
-    \includegraphics[width=0.85\linewidth]{figuras/mcts_convergencia_ucb.png}
+    \begin{adjustbox}{center}
+        \includegraphics[width=1.2\linewidth]{figuras/mcts_convergencia_ucb.png}
+    \end{adjustbox}
     \caption{Convergencia UCB1 en un día representativo (TSLA). Cada línea muestra la recompensa media acumulada $Q(a)/N(a)$ para cada acción a lo largo de las 5\,000 iteraciones.}
     \label{fig:convergencia-ucb}
 \end{figure}
@@ -113,8 +116,9 @@ La Figura~\ref{fig:convergencia-ucb} permite verificar empíricamente el objetiv
 \label{subsec:distribucion-retornos}
 
 \begin{figure}[H]
-    \centering
-    \includegraphics[width=0.85\linewidth]{figuras/mcts_violin_retornos.png}
+    \begin{center}
+        \includegraphics[width=1.2\linewidth]{figuras/mcts_violin_retornos.png}
+    \end{center}
     \caption{Distribución de retornos diarios. MCTS (azul) vs.\ B\&H (naranja). Las cajas internas indican el rango intercuartílico; los extremos de los violines señalan los valores extremos.}
     \label{fig:violin}
 \end{figure}

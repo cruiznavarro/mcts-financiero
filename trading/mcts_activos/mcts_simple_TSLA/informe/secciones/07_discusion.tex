@@ -25,9 +25,9 @@ Esta política binaria explica la mayor volatilidad diaria de MCTS ($3{.}065\,\%
 La Tabla~\ref{tab:objetivos} evalúa el grado de cumplimiento de los cinco objetivos enunciados en §\ref{subsec:objetivos}.
 
 \begin{table}[H]
-\centering
 \caption{Grado de cumplimiento de los objetivos del trabajo.}
 \label{tab:objetivos}
+\begin{adjustbox}{center}
 \begin{tabular}{clp{6.5cm}c}
 \toprule
 \textbf{Obj.} & \textbf{Enunciado} & \textbf{Evidencia} & \textbf{Grado} \\
@@ -49,6 +49,7 @@ O5 & Validar cota $\mathcal{O}(n^{-1/2})$ experimentalmente
    & Parcial$^\dagger$ \\
 \bottomrule
 \end{tabular}
+\end{adjustbox}
 \begin{minipage}{\linewidth}
 \vspace{4pt}
 \footnotesize $^\dagger$ La validación es visual; no se ha ajustado cuantitativamente la curva de convergencia a la cota $c/\sqrt{n}$ ni se ha calculado el intervalo de confianza empírico. Una validación completa requeriría repetir el experimento con múltiples semillas.
