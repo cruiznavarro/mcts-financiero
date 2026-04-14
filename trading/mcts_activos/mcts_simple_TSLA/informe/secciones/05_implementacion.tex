@@ -199,9 +199,8 @@ La función \texttt{backtest} itera sobre todos los días del histórico, recons
     \draw[flecha] (mcts)     -- (accion);
     \draw[flecha] (accion)   -- (reg);
     \draw[flecha] (reg)      -- (fin);
-    \draw[flecha] (fin.north) -- ++(0,0.6)
-                  node[midway, right, font=\scriptsize]{no}
-                  -| (calibrar.north);
+    \draw[flecha] (fin.north) -- (calibrar.south)
+                  node[midway, right, font=\scriptsize]{no};
 \end{tikzpicture}
 \caption{Flujo del \emph{backtest} día a día.}
 \label{fig:flujo-backtest}
