@@ -1,0 +1,108 @@
+% ============================================================================
+% §7 DISCUSIÓN Y CONCLUSIONES
+% ============================================================================
+\section{Discusión y conclusiones}
+\label{sec:discusion}
+
+% ----------------------------------------------------------------------------
+\subsection{Interpretación de los resultados principales}
+\label{subsec:interpretacion}
+
+Los resultados de la Sección~\ref{sec:resultados} presentan una aparente contradicción: MCTS supera a B\&H en retorno total ($+240\,\%$ frente a $+100\,\%$) pero no en ratio de Sharpe ($1{.}56$ frente a $1{.}93$). Esta contradicción se resuelve al entender la naturaleza de la política aprendida.
+
+\paragraph{Política binaria como consecuencia de la recompensa relativa.} La desviación~(D2) de §\ref{subsec:desviaciones} establece que la recompensa que alimenta el árbol MCTS es el exceso de log-retorno del agente sobre B\&H. Esta señal penaliza duramente estar poco invertido en un mercado alcista, pero premia igualmente estar en efectivo durante una caída. El resultado natural es una política de todo-o-nada: el agente maximiza la recompensa relativa adoptando posiciones extremas (plena inversión o efectivo total), que son precisamente las que más divergen de B\&H. Las posiciones fraccionarias intermedias apenas aportan señal diferencial y el árbol las visita poco.
+
+Esta política binaria explica la mayor volatilidad diaria de MCTS ($3{.}065\,\%$ frente a $1{.}903\,\%$): los días en que el agente está plenamente invertido en TSLA hereda toda la volatilidad del activo, y los días en efectivo aportan retorno exactamente nulo (mediana de MCTS $= 0$). El Sharpe inferior no refleja una gestión del riesgo deficiente, sino una exposición deliberadamente discontinua.
+
+\paragraph{El GBM rolling como detector de régimen.} La calibración con ventana móvil de $60$ días convierte el GBM en un detector adaptativo del régimen de mercado. Cuando la ventana captura una fase bajista (deriva $\hat\mu < 0$, volatilidad alta), los rollouts generan trayectorias pesimistas y el árbol aprende a favorecer VENDER. Cuando la ventana captura una tendencia alcista, ocurre lo contrario. Este mecanismo explica la retirada del mercado durante la corrección de TSLA (sesiones $\approx 150$--$230$) y la reentrada posterior, que son el origen de la ventaja acumulada de $+40\,\%$ de alfa al final del periodo.
+
+\paragraph{Convergencia y número de iteraciones.} La gráfica de convergencia UCB (Figura~\ref{fig:convergencia-ucb}) confirma que la estabilización de $Q(a)/N(a)$ se produce alrededor de las $1\,000$ iteraciones. Las $5\,000$ iteraciones usadas en el experimento proporcionan un margen de seguridad equivalente a reducir el error por un factor $\sqrt{5}$ adicional respecto al umbral de estabilización. El coste computacional es aproximadamente $5\times$ el mínimo necesario; en aplicaciones con restricción temporal estricta, $1\,000$ iteraciones serían suficientes.
+
+% ----------------------------------------------------------------------------
+\subsection{Validación de los objetivos}
+\label{subsec:validacion-objetivos}
+
+La Tabla~\ref{tab:objetivos} evalúa el grado de cumplimiento de los cinco objetivos enunciados en §\ref{subsec:objetivos}.
+
+\begin{table}[H]
+\centering
+\caption{Grado de cumplimiento de los objetivos del trabajo.}
+\label{tab:objetivos}
+\begin{tabular}{clp{6.5cm}c}
+\toprule
+\textbf{Obj.} & \textbf{Enunciado} & \textbf{Evidencia} & \textbf{Grado} \\
+\midrule
+O1 & Formalizar como MDP
+   & §\ref{subsec:mdp} y §\ref{subsec:mdp-trading}: cuádrupla $(\mathcal{S},\mathcal{A},P,R)$ instanciada.
+   & Completo \\[4pt]
+O2 & Implementar MCTS con rollouts GBM
+   & §\ref{sec:implementacion}: código completo con calibración rolling y selección UCB1.
+   & Completo \\[4pt]
+O3 & Demostrar convergencia vía LLN
+   & §\ref{subsec:convergencia-uct}: identificación $Q(a)/N(a)\xrightarrow{\text{c.s.}}\mathbb{E}[R\mid a]$ via Cor.~\ref{cor:convergencia-estimador}.
+   & Completo \\[4pt]
+O4 & Comparar con B\&H mediante métricas
+   & §\ref{sec:resultados}: ROI, Sharpe, alfa, drawdown absoluto y del alfa.
+   & Completo \\[4pt]
+O5 & Validar cota $\mathcal{O}(n^{-1/2})$ experimentalmente
+   & Fig.~\ref{fig:convergencia-ucb}: la envolvente de $Q/N$ decrece consistentemente con $1/\sqrt{n}$.
+   & Parcial$^\dagger$ \\
+\bottomrule
+\end{tabular}
+\begin{minipage}{\linewidth}
+\vspace{4pt}
+\footnotesize $^\dagger$ La validación es visual; no se ha ajustado cuantitativamente la curva de convergencia a la cota $c/\sqrt{n}$ ni se ha calculado el intervalo de confianza empírico. Una validación completa requeriría repetir el experimento con múltiples semillas.
+\end{minipage}
+\end{table}
+
+% ----------------------------------------------------------------------------
+\subsection{Limitaciones del modelo}
+\label{subsec:limitaciones-modelo}
+
+El modelo presentado descansa sobre supuestos que conviene examinar críticamente.
+
+\paragraph{(L1) El GBM no captura colas pesadas ni saltos.} El movimiento Browniano geométrico produce log-retornos gaussianos, con colas que decaen exponencialmente. Los mercados financieros reales exhiben \emph{fat tails}: eventos extremos (como la caída de $-75\,\%$ de TSLA en el periodo analizado) ocurren con una frecuencia muy superior a la predicha por la distribución normal. El modelo de Merton (1976), que añade saltos de Poisson al GBM, sería una alternativa más realista, a cambio de una mayor complejidad de calibración.
+
+\paragraph{(L2) Calibración sin corrección $\hat\sigma^2/2$.} Como se indica en la desviación~(D3), el programa usa $\hat\mu = \bar r$ en lugar del estimador correcto $\bar r + \hat\sigma^2/2$. Para TSLA, la corrección representa $\approx 0{.}02\,\%$ diario, despreciable frente a la deriva estimada. En activos con volatilidades anualizadas superiores al $50\,\%$ (criptomonedas, por ejemplo), la corrección sería relevante.
+
+\paragraph{(L3) Costes de transacción ignorados.} La política binaria aprendida implica un elevado número de operaciones de compra-venta a lo largo del periodo. En un entorno real, cada operación conlleva comisión de corretaje y posible impacto en el mercado (\emph{slippage}). La inclusión de un coste proporcional al volumen operado en la función de recompensa modificaría la política óptima, probablemente suavizando su carácter todo-o-nada.
+
+\paragraph{(L4) \emph{Lookforward bias} en la visualización.} Los paneles de precio de las figuras muestran la serie completa de TSLA, incluyendo datos posteriores a la decisión de cada día. Esto no afecta al algoritmo (que solo usa precios pasados en la calibración y los rollouts), pero puede dar la impresión visual de que el agente "veía el futuro". El agente opera estrictamente sobre información disponible en $t$.
+
+\paragraph{(L5) Sobreajuste al periodo histórico.} El experimento evalúa la estrategia sobre el mismo periodo usado implícitamente para diseñar el modelo (elección de ventana, horizonte de rollout, constante $c$). Una evaluación rigurosa requeriría una división explícita \emph{in-sample / out-of-sample} o, preferiblemente, validación cruzada por bloques temporales.
+
+% ----------------------------------------------------------------------------
+\subsection{Limitaciones del experimento}
+\label{subsec:limitaciones-experimento}
+
+Más allá del modelo, el diseño experimental presenta limitaciones propias.
+
+\paragraph{Un solo activo.} Los resultados se obtienen exclusivamente sobre TSLA durante un periodo de alta volatilidad con una corrección severa y una recuperación completa. Esta combinación es particularmente favorable para una estrategia de \emph{market timing} como la aprendida por MCTS. En activos con menor volatilidad (índices amplios, bonos) o en periodos de tendencia lateral prolongada, la ventaja sobre B\&H sería previsiblemente menor o incluso negativa.
+
+\paragraph{Una sola semilla.} Fijar \texttt{SEMILLA}~$= 42$ garantiza reproducibilidad, pero no permite cuantificar la varianza del algoritmo entre ejecuciones. El análisis estadístico correcto requeriría repetir el backtest con un conjunto de semillas y reportar la distribución de los resultados.
+
+\paragraph{Un solo conjunto de hiperparámetros.} Los valores \texttt{DIAS\_ROLLOUT}~$= 60$, \texttt{VENTANA\_CALIB}~$= 60$ e \texttt{ITERACIONES}~$= 5\,000$ no han sido optimizados de forma sistemática. Una búsqueda en cuadrícula sobre estos parámetros con validación cruzada temporal podría mejorar o contextualizar los resultados.
+
+% ----------------------------------------------------------------------------
+\subsection{Posibles extensiones}
+\label{subsec:extensiones}
+
+El presente trabajo puede extenderse en varias direcciones, algunas de las cuales están ya parcialmente implementadas en el mismo repositorio.
+
+\paragraph{Cartera multi-activo.} La extensión más inmediata consiste en aplicar MCTS a una cartera de varios activos simultáneos, lo que requiere modelar las correlaciones mediante un GBM multivariante con descomposición de Cholesky. El programa \texttt{portfolio\_relativo.py}, disponible en la carpeta \texttt{trading/portfolio\_relativo/} del repositorio \texttt{cruiznavarro/mcts-financiero}, implementa exactamente esta extensión: calibra la matriz de covarianza de log-retornos, aplica Cholesky para obtener trayectorias correlacionadas y ejecuta MCTS sobre el vector de posiciones de la cartera.
+
+\paragraph{Modelo con saltos.} Sustituir el GBM por el modelo de Merton permitiría capturar los saltos abruptos que caracterizan a activos como TSLA. El rollout pasaría a incluir, adicionalmente a la componente continua, una componente de saltos de Poisson calibrada sobre las pérdidas extremas observadas.
+
+\paragraph{Inclusión de costes de transacción.} Añadir un término de penalización en la recompensa proporcional al volumen operado ($\propto |\Delta\text{posición}|$) moderaría la política binaria y permitiría evaluar si la ventaja de MCTS persiste en entornos de mercado con fricción.
+
+\paragraph{Reducción de varianza.} El método de \emph{common random numbers} (CRN) ya aplicado entre agente y B\&H en cada rollout (§\ref{subsec:rollout-cod}) podría extenderse entre rollouts de distintas acciones dentro de la misma iteración. Técnicas como el muestreo estratificado o los métodos cuasi-Monte Carlo (sucesiones de Sobol, Halton) permitirían reducir el error del estimador $Q(a)/N(a)$ a una tasa superior a $\mathcal{O}(n^{-1/2})$.
+
+% ----------------------------------------------------------------------------
+\subsection{Conclusiones}
+\label{subsec:conclusiones}
+
+Este trabajo ha mostrado que el algoritmo Monte Carlo Tree Search, aplicado al problema de decisión de trading diario sobre el activo TSLA, puede interpretarse como una instancia del estimador de Monte Carlo por media muestral estudiado en los apuntes de Aràndiga~\cite{arandiga}: cada rollout es una muestra $X_i$, el cociente $Q(a)/N(a)$ es el estimador $\widehat{I}_n$ y su convergencia al retorno esperado bajo la acción $a$ es consecuencia directa de la Ley Fuerte de los Grandes Números. La elección de la política UCB1 garantiza que todos las acciones acumulen visitas indefinidamente, satisfaciendo la condición de aplicabilidad de dicha ley, mientras que la cota de error $\mathcal{O}(n^{-1/2})$ del Teorema~\ref{teorema:error-mc} justifica el número de iteraciones como compromiso entre precisión y coste.
+
+Empíricamente, el algoritmo obtiene en el periodo analizado un retorno total de $\approx +240\,\%$ frente al $\approx +100\,\%$ de la estrategia pasiva Buy \& Hold, con un drawdown máximo contenido en $-10\,\%$. La clave del resultado es la capacidad del GBM calibrado con ventana móvil de detectar cambios de régimen y comunicarlos al árbol de búsqueda, que aprende iteración a iteración a favor de posiciones largas en mercados alcistas y de efectivo en mercados bajistas.
+
+Las limitaciones identificadas ---ausencia de costes de transacción, sobreajuste al periodo, un único activo--- invitan a la cautela en la generalización de las conclusiones. Sin embargo, el objetivo didáctico del trabajo queda plenamente satisfecho: el puente entre el Monte Carlo clásico y el MCTS queda establecido con rigor matemático, y el código que lo implementa es transparente, reproducible y extensible.

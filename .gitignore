@@ -14,6 +14,8 @@ __pycache__/
 *.out
 *.toc
 *.synctex.gz
+*.bbl
+*.blg
 
 # Claude/editor
 .claude/

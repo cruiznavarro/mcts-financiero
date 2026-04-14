@@ -107,7 +107,7 @@ El problema se formaliza como un proceso de decisión de Markov (MDP) con espaci
 \]
 de modo que los valores acumulados $Q(a)/N(a)$ en la raíz del árbol convergen, en virtud de la \emph{Ley Fuerte de los Grandes Números}, al retorno esperado bajo cada acción. La política de selección UCB1 equilibra explotación y exploración mediante la fórmula $Q(i)/N(i) + c\sqrt{\ln N_{\text{padre}}/N(i)}$, garantizando consistencia asintótica del algoritmo UCT.
 
-Se implementa el método en Python y se evalúa sobre dos años de datos históricos de TSLA, comparando la estrategia MCTS frente a una estrategia pasiva \emph{Buy \& Hold} mediante: evolución de la cartera, alfa relativa, \emph{drawdown} absoluto y del alfa, retorno total y ratio de Sharpe. El error del estimador sigue la cota $\mathcal{O}(n^{-1/2})$ del Teorema del análisis del error (Aràndiga, §5), lo que justifica el valor $\texttt{ITERACIONES}=1000$ como compromiso entre precisión estadística y coste computacional.
+Se implementa el método en Python y se evalúa sobre dos años de datos históricos de TSLA ($\approx 506$ sesiones, capital inicial $10\,000$\,\$, $\texttt{ITERACIONES}=5\,000$), comparando la estrategia MCTS frente a una estrategia pasiva \emph{Buy \& Hold} mediante: evolución de la cartera, alfa relativa, \emph{drawdown} absoluto y del alfa, retorno total y ratio de Sharpe. El algoritmo obtiene un retorno total de $\approx +240\,\%$ frente al $\approx +100\,\%$ de B\&H, con una alfa final de $\approx +40\,\%$ y un \emph{drawdown} máximo contenido en $-10\,\%$, a cambio de un ratio de Sharpe inferior ($1{.}56$ frente a $1{.}93$). El error del estimador sigue la cota $\mathcal{O}(n^{-1/2})$ del Teorema del análisis del error (Aràndiga, §5), validada experimentalmente mediante la gráfica de convergencia UCB.
 
 \vspace{0.3cm}
 \noindent\textbf{Palabras clave:} Monte Carlo Tree Search, UCB1, movimiento Browniano Geométrico, Ley de los Grandes Números, trading algorítmico, proceso de decisión de Markov.
@@ -130,7 +130,21 @@ Se implementa el método en Python y se evalúa sobre dos años de datos histór
 \input{secciones/03_monte_carlo}
 \input{secciones/04_mdp_mcts}
 \input{secciones/05_implementacion}
-% \input{secciones/06_resultados}
-% \input{secciones/07_discusion}
+\input{secciones/06_resultados}
+\input{secciones/07_discusion}
+
+% ----------------------------------------------------------------------------
+% ANEXOS
+% ----------------------------------------------------------------------------
+\appendix
+\input{anexos/anexo_a_gbm}
+\input{anexos/anexo_b_kocsis}
+
+% ----------------------------------------------------------------------------
+% BIBLIOGRAFÍA
+% ----------------------------------------------------------------------------
+\newpage
+\bibliographystyle{plain}
+\bibliography{referencias}
 
 \end{document}

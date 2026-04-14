@@ -1,0 +1,80 @@
+% ============================================================================
+% ANEXO A — DERIVACIÓN DE LA SOLUCIÓN EXACTA DEL GBM VÍA LEMA DE ITÔ
+% ============================================================================
+\section{Derivación de la solución exacta del GBM}
+\label{anexo:gbm}
+
+Este anexo demuestra la fórmula~\eqref{eq:gbm-exacta} utilizada en §\ref{subsec:gbm}, partiendo de la ecuación diferencial estocástica~\eqref{eq:sde-gbm} y aplicando el lema de Itô. El nivel matemático presupuesto es el de un primer curso de cálculo estocástico; para una exposición completa se remite a Øksendal~\cite{oksendal2003}.
+
+% ----------------------------------------------------------------------------
+\subsection*{A.1\quad El lema de Itô}
+
+Sea $\{W_t\}_{t \geq 0}$ un movimiento Browniano estándar sobre un espacio de probabilidad filtrado $(\Omega, \mathcal{F}, \{\mathcal{F}_t\}, \mathbb{P})$. Un proceso de Itô es cualquier proceso de la forma
+\[
+    dX_t \;=\; \mu_t\, dt + \sigma_t\, dW_t,
+\]
+donde $\mu_t$ y $\sigma_t$ son procesos adaptados suficientemente integrables.
+
+\begin{teorema}[Lema de Itô, caso univariante]
+\label{teorema:ito}
+Sea $\{X_t\}$ un proceso de Itô con coeficientes $(\mu_t, \sigma_t)$ y sea $f: \mathbb{R}_{>0} \times \mathbb{R} \to \mathbb{R}$ una función de clase $\mathcal{C}^{1,2}$ (continua con derivadas parciales continuas hasta orden 1 en $t$ y orden 2 en $x$). Entonces el proceso $Y_t = f(t, X_t)$ es también un proceso de Itô y satisface
+\begin{equation}
+    dY_t \;=\; \frac{\partial f}{\partial t}(t, X_t)\,dt
+            + \frac{\partial f}{\partial x}(t, X_t)\,dX_t
+            + \frac{1}{2}\,\frac{\partial^2 f}{\partial x^2}(t, X_t)\,\sigma_t^2\,dt.
+    \label{eq:lema-ito}
+\end{equation}
+\end{teorema}
+
+La diferencia esencial respecto al cálculo ordinario es el término correctivo $\frac{1}{2}f_{xx}\sigma_t^2\,dt$, conocido como \emph{corrección de Itô}, que surge porque la variación cuadrática de $W_t$ es $d\langle W\rangle_t = dt$ (y no cero como ocurriría con una función de variación acotada ordinaria).
+
+% ----------------------------------------------------------------------------
+\subsection*{A.2\quad Aplicación a $\ln S_t$}
+
+Partimos de la SDE del GBM:
+\[
+    dS_t \;=\; \mu S_t\,dt + \sigma S_t\,dW_t,
+    \tag{\ref{eq:sde-gbm}}
+\]
+con $\mu, \sigma \in \mathbb{R}$, $\sigma > 0$. Definimos $f(t, x) = \ln x$ (independiente de $t$). Sus derivadas parciales son:
+\[
+    f_t = 0, \qquad f_x = \frac{1}{x}, \qquad f_{xx} = -\frac{1}{x^2}.
+\]
+
+Aplicando el Teorema~\ref{teorema:ito} con $X_t = S_t$, $\mu_t = \mu S_t$ y $\sigma_t = \sigma S_t$:
+\begin{align*}
+    d(\ln S_t)
+    &= 0 \cdot dt + \frac{1}{S_t}\,dS_t + \frac{1}{2}\left(-\frac{1}{S_t^2}\right)(\sigma S_t)^2\,dt \\[4pt]
+    &= \frac{1}{S_t}(\mu S_t\,dt + \sigma S_t\,dW_t) - \frac{\sigma^2}{2}\,dt \\[4pt]
+    &= \left(\mu - \frac{\sigma^2}{2}\right)dt + \sigma\,dW_t.
+\end{align*}
+
+El proceso $\ln S_t$ satisface, por tanto, la SDE de un movimiento Browniano con deriva constante $\mu - \sigma^2/2$ y volatilidad constante $\sigma$. Esta es una ecuación diferencial estocástica \emph{lineal} cuyos coeficientes son deterministas.
+
+% ----------------------------------------------------------------------------
+\subsection*{A.3\quad Integración y solución exacta}
+
+Integrando ambos miembros entre $t$ y $t + h$:
+\[
+    \ln S_{t+h} - \ln S_t
+    \;=\; \left(\mu - \frac{\sigma^2}{2}\right)h + \sigma\,(W_{t+h} - W_t).
+\]
+
+El incremento del Browniano $W_{t+h} - W_t$ es independiente de $\mathcal{F}_t$ y tiene distribución $\mathcal{N}(0, h)$. Escribiéndolo como $\sqrt{h}\,Z$ con $Z \sim \mathcal{N}(0,1)$, y aplicando la función exponencial a ambos lados:
+
+\begin{equation}
+    S_{t+h} \;=\; S_t \exp\!\left(\left(\mu - \frac{\sigma^2}{2}\right)h + \sigma\sqrt{h}\,Z\right),
+    \qquad Z \sim \mathcal{N}(0,1).
+    \tag{\ref{eq:gbm-exacta}}
+\end{equation}
+
+Esta es la fórmula de simulación exacta empleada en la función \texttt{rollout} del programa (§\ref{subsec:rollout-cod}). Es \emph{exacta} en el sentido de que no introduce error de discretización: la distribución de $S_{t+h}$ condicionada a $S_t$ es exactamente log-normal con parámetros $\ln S_t + (\mu - \sigma^2/2)h$ y $\sigma^2 h$, independientemente del paso $h$ elegido.
+
+% ----------------------------------------------------------------------------
+\subsection*{A.4\quad Nota sobre la corrección $\sigma^2/2$}
+
+El término $-\sigma^2/2$ en la exponente tiene una interpretación intuitiva. La media de $S_{t+h}$ condicionada a $S_t$ es
+\[
+    \mathbb{E}[S_{t+h} \mid S_t] \;=\; S_t\, e^{\mu h},
+\]
+que crece a la tasa $\mu$ (la deriva de la SDE original). Sin embargo, la media del \emph{logaritmo} del precio crece a la tasa $\mu - \sigma^2/2 < \mu$: la corrección de Jensen, $-\sigma^2/2$, recoge el coste de la convexidad de la función logaritmo frente a la distribución log-normal. Este es precisamente el término que la desviación~(D3) de §\ref{subsec:desviaciones} omite en la calibración práctica de $\hat\mu$.
