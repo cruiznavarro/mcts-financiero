@@ -1,0 +1,136 @@
+\documentclass[12pt, a4paper]{article}
+
+% ============================================================================
+% PAQUETES
+% ============================================================================
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage[margin=2.5cm]{geometry}
+
+% Matemáticas
+\usepackage{amsmath, amsthm, amssymb}
+\usepackage{mathtools}
+
+% Gráficas y figuras
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+
+% Código Python
+\usepackage{listings}
+\usepackage{xcolor}
+
+% Tablas
+\usepackage{booktabs}
+\usepackage{array}
+
+% Pseudocódigo
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% Diagramas
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning}
+
+% Hipervínculos
+\usepackage[colorlinks=true, linkcolor=blue!60!black, citecolor=blue!60!black, urlcolor=blue!60!black]{hyperref}
+
+% ============================================================================
+% ENTORNOS MATEMÁTICOS
+% ============================================================================
+\newtheorem{teorema}{Teorema}[section]
+\newtheorem{proposicion}[teorema]{Proposición}
+\newtheorem{lema}[teorema]{Lema}
+\newtheorem{corolario}[teorema]{Corolario}
+
+\theoremstyle{definition}
+\newtheorem{definicion}[teorema]{Definición}
+\newtheorem{ejemplo}[teorema]{Ejemplo}
+
+\theoremstyle{remark}
+\newtheorem{observacion}[teorema]{Observación}
+
+% ============================================================================
+% ESTILO PARA CÓDIGO PYTHON
+% ============================================================================
+\definecolor{codegris}{rgb}{0.95,0.95,0.95}
+\definecolor{codeverde}{rgb}{0,0.5,0}
+\definecolor{codeazul}{rgb}{0,0,0.7}
+\definecolor{codemorado}{rgb}{0.5,0,0.5}
+
+\lstset{
+    language=Python,
+    backgroundcolor=\color{codegris},
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\color{codeazul}\bfseries,
+    commentstyle=\color{codeverde}\itshape,
+    stringstyle=\color{codemorado},
+    showstringspaces=false,
+    breaklines=true,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    frame=single,
+    rulecolor=\color{gray!30},
+    captionpos=b,
+    tabsize=4,
+}
+
+% ============================================================================
+% TÍTULO
+% ============================================================================
+\title{
+    \vspace{-1.5cm}
+    \textbf{Monte Carlo Tree Search aplicado a decisiones de inversión financiera}\\[0.3cm]
+    \large Un estudio sobre el activo TSLA bajo el marco clásico del método de Monte Carlo
+}
+\author{Carlos Ruiz Navarro}
+\date{Universitat de València \\ Grado en Matemáticas --- Métodos Numéricos \\[0.2cm] \today}
+
+% ============================================================================
+% DOCUMENTO
+% ============================================================================
+\begin{document}
+
+\maketitle
+
+% ----------------------------------------------------------------------------
+% RESUMEN / ABSTRACT
+% ----------------------------------------------------------------------------
+\begin{abstract}
+\noindent
+Este trabajo presenta una aplicación del algoritmo \emph{Monte Carlo Tree Search} (MCTS) a la toma de decisiones de trading sobre el activo TSLA (Tesla, Inc.), enmarcando el método en los fundamentos matemáticos del Monte Carlo clásico expuestos en los apuntes de la asignatura \emph{Métodos Numéricos} (Aràndiga, Universitat de València).
+
+El problema se formaliza como un proceso de decisión de Markov (MDP) con espacio de acciones discreto de once elementos (compras y ventas fraccionarias y mantenimiento de posición). El motor de simulación es un modelo de \emph{movimiento Browniano Geométrico} (GBM), calibrado sobre una ventana móvil de $60$ días a partir de los log-retornos observados. Cada \emph{rollout} del MCTS genera una trayectoria de precios que desempeña el papel de una muestra $X_i$ del estimador de Monte Carlo por media muestral
+\[
+    \widehat{I}_n \;=\; v \cdot \overline{X}_n \;=\; \frac{v}{n}\sum_{i=1}^{n} X_i,
+\]
+de modo que los valores acumulados $Q(a)/N(a)$ en la raíz del árbol convergen, en virtud de la \emph{Ley Fuerte de los Grandes Números}, al retorno esperado bajo cada acción. La política de selección UCB1 equilibra explotación y exploración mediante la fórmula $Q(i)/N(i) + c\sqrt{\ln N_{\text{padre}}/N(i)}$, garantizando consistencia asintótica del algoritmo UCT.
+
+Se implementa el método en Python y se evalúa sobre dos años de datos históricos de TSLA, comparando la estrategia MCTS frente a una estrategia pasiva \emph{Buy \& Hold} mediante: evolución de la cartera, alfa relativa, \emph{drawdown} absoluto y del alfa, retorno total y ratio de Sharpe. El error del estimador sigue la cota $\mathcal{O}(n^{-1/2})$ del Teorema del análisis del error (Aràndiga, §5), lo que justifica el valor $\texttt{ITERACIONES}=1000$ como compromiso entre precisión estadística y coste computacional.
+
+\vspace{0.3cm}
+\noindent\textbf{Palabras clave:} Monte Carlo Tree Search, UCB1, movimiento Browniano Geométrico, Ley de los Grandes Números, trading algorítmico, proceso de decisión de Markov.
+\end{abstract}
+
+\vspace{0.5cm}
+\hrule
+\vspace{0.5cm}
+
+\tableofcontents
+
+\newpage
+
+% ----------------------------------------------------------------------------
+% SECCIONES (pendientes)
+% ----------------------------------------------------------------------------
+
+\input{secciones/01_introduccion}
+\input{secciones/02_variables_aleatorias}
+\input{secciones/03_monte_carlo}
+\input{secciones/04_mdp_mcts}
+\input{secciones/05_implementacion}
+% \input{secciones/06_resultados}
+% \input{secciones/07_discusion}
+
+\end{document}

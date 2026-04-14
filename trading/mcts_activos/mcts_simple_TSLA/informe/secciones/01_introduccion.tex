@@ -1,0 +1,78 @@
+% ============================================================================
+% §1 INTRODUCCIÓN
+% ============================================================================
+\section{Introducción}
+\label{sec:introduccion}
+
+% ----------------------------------------------------------------------------
+\subsection{Contexto y motivación}
+\label{subsec:contexto}
+
+Los mercados financieros constituyen uno de los sistemas dinámicos más estudiados y, a la vez, menos predecibles con los que trabaja la matemática aplicada. Cada sesión bursátil, un inversor debe decidir si comprar, vender o mantener un determinado activo, disponiendo únicamente de información histórica y de una estimación, necesariamente imperfecta, de la distribución futura de precios. Este problema, conocido en la literatura como \emph{trading cuantitativo}, puede formularse con rigor como un \emph{proceso de decisión secuencial bajo incertidumbre}: el agente no conoce el estado futuro del sistema, pero puede asignar probabilidades a sus posibles evoluciones y tomar decisiones que maximicen el valor esperado de un objetivo económico.
+
+Desde esta perspectiva, el problema admite un tratamiento natural mediante herramientas que el estudiante de la asignatura \emph{Métodos Numéricos} ha encontrado en otros contextos: generación de variables aleatorias, simulación estocástica y estimación del valor esperado mediante promedios muestrales. El presente trabajo se apoya en los apuntes de Aràndiga~\cite{arandiga} sobre el método de Monte Carlo como soporte teórico y los extiende mediante el algoritmo \emph{Monte Carlo Tree Search} (MCTS), un método de planificación sobre árboles de decisión introducido por Kocsis y Szepesvári~\cite{kocsis2006} que combina muestreo estocástico con una política de exploración basada en cotas de confianza.
+
+% ----------------------------------------------------------------------------
+\subsection{Planteamiento del problema}
+\label{subsec:problema}
+
+Sea $\{P_t\}_{t=0}^{T}$ la serie temporal de precios de cierre diarios del activo TSLA (Tesla, Inc.) durante un horizonte de dos años. Un agente dispone de un capital inicial $C_0 = 10\,000$\,\$ y, al final de cada sesión $t$, debe ejecutar una acción $a_t$ perteneciente al conjunto finito
+\[
+    \mathcal{A} = \{\text{COMPRAR\_100},\ \text{COMPRAR\_75},\ \ldots,\ \text{MANTENER},\ \ldots,\ \text{VENDER\_100}\},
+\]
+que especifica la fracción del efectivo disponible destinada a comprar acciones, la fracción de acciones a liquidar, o la ausencia de operación. La decisión modifica el estado de la cartera $(\text{efectivo}_t,\ \text{acciones}_t)$, cuyo valor total se actualiza con el precio del día siguiente.
+
+La pregunta operativa que guía el trabajo es la siguiente:
+
+\begin{quote}
+    \itshape ¿Existe una política $\pi: \mathcal{S} \to \mathcal{A}$, dependiente del histórico de precios y de la posición actual, que obtenga sistemáticamente un retorno superior al de la estrategia pasiva \emph{Buy \& Hold}?
+\end{quote}
+
+La estrategia \emph{Buy \& Hold} consiste en invertir todo el capital en el activo en $t=0$ y no realizar ninguna operación posterior; sirve como referencia neutra frente a la cual evaluar cualquier estrategia activa. La presente memoria no pretende responder a esta pregunta en toda su generalidad, sino construir y analizar un \emph{método concreto} ---MCTS con rollouts basados en movimiento Browniano geométrico--- y medir su comportamiento empírico sobre un periodo histórico específico.
+
+% ----------------------------------------------------------------------------
+\subsection{Por qué Monte Carlo Tree Search}
+\label{subsec:por-que-mcts}
+
+El espacio de estados de nuestro problema es continuo (el precio $P_t$ toma valores en $\mathbb{R}_{>0}$) y de dimensión apreciable, pues el estado no depende solo del precio actual sino también de indicadores técnicos como la media móvil y el RSI, y de la propia composición de la cartera. Esta combinación hace inviable una enumeración exhaustiva al estilo de la programación dinámica clásica. Alternativas como el \emph{Q-learning} tabular requieren una discretización costosa, mientras que las reglas heurísticas (cruces de medias, umbrales de RSI) carecen de garantías asintóticas.
+
+MCTS ofrece un punto intermedio atractivo. En lugar de aproximar una función de valor sobre todo el espacio de estados, construye un árbol de búsqueda \emph{local} al estado actual y lo expande selectivamente mediante simulaciones aleatorias. La política de selección \emph{UCB1} (\emph{Upper Confidence Bound}) equilibra dos objetivos opuestos:
+\begin{itemize}
+    \item \textbf{Explotar} las acciones que han dado buen resultado en simulaciones anteriores.
+    \item \textbf{Explorar} las acciones con pocas visitas, por si escondieran retornos altos aún no descubiertos.
+\end{itemize}
+Este compromiso, formalizado por la desigualdad de Chernoff--Hoeffding sobre las visitas y los retornos acumulados, garantiza que el algoritmo converge al \emph{minimax} del árbol de decisión a medida que el número de iteraciones crece~\cite{kocsis2006}.
+
+% ----------------------------------------------------------------------------
+\subsection{Conexión con el Monte Carlo clásico}
+\label{subsec:puente-arandiga}
+
+El aporte didáctico central de este trabajo reside en mostrar que \emph{MCTS no es un algoritmo esotérico del ámbito de la inteligencia artificial}, sino una aplicación directa del método de Monte Carlo por media muestral estudiado en el tema correspondiente de la asignatura. Si denotamos por $X_i$ el retorno económico acumulado al simular una trayectoria de precios durante $H$ días a partir del estado actual tras ejecutar una acción $a$, y se repite esta simulación $n$ veces de forma independiente, el estimador
+\begin{equation}
+    \widehat{I}_n \;=\; \frac{1}{n}\sum_{i=1}^{n} X_i \;\xrightarrow{\ \text{c.s.}\ }\; \mathbb{E}[X \mid a]
+    \qquad (n \to \infty)
+    \label{eq:mc-estimator-intro}
+\end{equation}
+converge casi seguramente al retorno esperado bajo la acción $a$, en virtud de la Ley Fuerte de los Grandes Números (Teorema~\ref{teorema:llng} de~\S\ref{sec:monte-carlo}).
+
+El lector puede constatar que el cociente $Q(a)/N(a)$ que MCTS mantiene en cada nodo de su árbol no es otra cosa que el estimador~\eqref{eq:mc-estimator-intro} aplicado al conjunto particular de rollouts que el algoritmo haya ejecutado hasta el momento. La Sección~\ref{sec:monte-carlo} desarrollará esta identificación de forma rigurosa y derivará, como corolario, la cota de error $\mathcal{O}(n^{-1/2})$ que justifica la elección del parámetro \texttt{ITERACIONES}.
+
+% ----------------------------------------------------------------------------
+\subsection{Objetivos del trabajo}
+\label{subsec:objetivos}
+
+El presente documento persigue los cinco objetivos siguientes:
+
+\begin{enumerate}
+    \item[(O1)] \textbf{Formalizar} el problema de \emph{trading} diario como un proceso de decisión de Markov (MDP) con espacio de acciones discreto y recompensa financiera explícita.
+    \item[(O2)] \textbf{Implementar} el algoritmo MCTS con política UCB1 y rollouts generados mediante un modelo de movimiento Browniano geométrico calibrado sobre ventana móvil.
+    \item[(O3)] \textbf{Demostrar} que la convergencia del algoritmo se apoya directamente en la Ley Fuerte de los Grandes Números (Aràndiga,~\S3) y en la cota de error del Teorema del análisis del error (Aràndiga,~\S5).
+    \item[(O4)] \textbf{Comparar} empíricamente la estrategia MCTS con la referencia \emph{Buy \& Hold} mediante métricas estandarizadas: retorno total, ratio de Sharpe, alfa relativa, \emph{drawdown} absoluto y \emph{drawdown} del alfa.
+    \item[(O5)] \textbf{Validar} experimentalmente la cota $\mathcal{O}(n^{-1/2})$ observando la evolución del valor estimado en la raíz del árbol en función de \texttt{ITERACIONES}.
+\end{enumerate}
+
+% ----------------------------------------------------------------------------
+\subsection{Estructura del informe}
+\label{subsec:estructura}
+
+La Sección~\ref{sec:variables-aleatorias} recoge los conceptos probabilísticos necesarios, siguiendo de cerca el tema~\S2 de los apuntes~\cite{arandiga}: variables aleatorias discretas y continuas, método de la transformación inversa y generación de muestras. La Sección~\ref{sec:monte-carlo} desarrolla íntegramente los métodos de Monte Carlo por éxito-fracaso y por media muestral (\S3 y~\S5 de~\cite{arandiga}), demostrando las leyes de los grandes números y el análisis del error, que constituyen la base teórica del MCTS. La Sección~\ref{sec:mdp-mcts} formaliza el MDP, introduce UCB1 y describe el ciclo de cuatro pasos del MCTS, así como el modelo GBM utilizado en los rollouts. La Sección~\ref{sec:implementacion} presenta la implementación en Python y discute las principales decisiones de diseño. La Sección~\ref{sec:resultados} recoge los resultados experimentales sobre TSLA con seis gráficas comentadas. Finalmente, la Sección~\ref{sec:discusion} contiene la discusión y las conclusiones.

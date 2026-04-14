@@ -1,0 +1,156 @@
+% ============================================================================
+% §2 VARIABLES ALEATORIAS
+% ============================================================================
+\section{Variables aleatorias}
+\label{sec:variables-aleatorias}
+
+Esta sección recoge los conceptos probabilísticos necesarios para formular y analizar el método de Monte Carlo. Seguimos de cerca el capítulo~\S2 de los apuntes de Aràndiga~\cite{arandiga}, seleccionando las distribuciones que intervienen directamente en el programa \texttt{mcts\_simple\_TSLA.py} y omitiendo las que no aparecen en nuestro modelo.
+
+% ----------------------------------------------------------------------------
+\subsection{Preliminares}
+\label{subsec:preliminares-va}
+
+Sea $(\Omega, \mathcal{F}, \mathbb{P})$ un espacio de probabilidad. Una \emph{variable aleatoria} real es una función medible $X: \Omega \to \mathbb{R}$. Su \emph{función de distribución} (FDA) se define como
+\[
+    F_X(x) \;=\; \mathbb{P}(X \leq x), \qquad x \in \mathbb{R},
+\]
+y es monótona no decreciente, continua por la derecha, con $\lim_{x\to -\infty} F_X(x) = 0$ y $\lim_{x\to +\infty} F_X(x) = 1$.
+
+Cuando $X$ es \emph{absolutamente continua}, existe una función no negativa $f_X: \mathbb{R} \to \mathbb{R}_{\geq 0}$, llamada \emph{función de densidad}, tal que
+\[
+    F_X(x) \;=\; \int_{-\infty}^{x} f_X(t)\, dt, \qquad \int_{-\infty}^{+\infty} f_X(t)\, dt = 1.
+\]
+Si $X$ es \emph{discreta}, toma valores en un conjunto numerable $\{x_k\}_{k\in K}$ y queda caracterizada por su \emph{función de masa de probabilidad} $p_k = \mathbb{P}(X = x_k)$.
+
+La \emph{esperanza} y la \emph{varianza} de $X$ (cuando existen) se definen respectivamente como
+\[
+    \mathbb{E}[X] \;=\; \int_{\mathbb{R}} x\, f_X(x)\, dx \quad \text{(caso continuo)},
+    \qquad
+    \operatorname{Var}(X) \;=\; \mathbb{E}\!\left[(X - \mathbb{E}[X])^2\right].
+\]
+Para variables discretas, las integrales se sustituyen por sumas ponderadas por $p_k$. En lo sucesivo, escribiremos $\mu = \mathbb{E}[X]$ y $\sigma^2 = \operatorname{Var}(X)$.
+
+% ----------------------------------------------------------------------------
+\subsection{Variables aleatorias discretas}
+\label{subsec:va-discretas}
+
+Aunque el programa objeto de este informe no utiliza distribuciones discretas de forma explícita, recogemos brevemente la \emph{Bernoulli} y la \emph{Binomial}, pues constituyen el sustrato teórico del método de Monte Carlo por éxito-fracaso (§\ref{sec:monte-carlo}) y del contador de visitas $N(a)$ asociado a cada nodo del árbol MCTS.
+
+\begin{definicion}[Bernoulli y Binomial]
+\label{def:bernoulli-binomial}
+Sea $p \in [0,1]$. Una variable aleatoria $X$ tiene distribución \emph{Bernoulli de parámetro $p$}, y se escribe $X \sim \operatorname{Ber}(p)$, si toma los valores
+\[
+    \mathbb{P}(X = 1) = p, \qquad \mathbb{P}(X = 0) = 1 - p.
+\]
+Si $X_1, \ldots, X_n$ son Bernoullis independientes e idénticamente distribuidas ($i.i.d.$) de parámetro $p$, la variable $S_n = \sum_{i=1}^{n} X_i$ sigue una \emph{distribución binomial} $\operatorname{Bin}(n, p)$, con
+\[
+    \mathbb{P}(S_n = k) = \binom{n}{k} p^k (1-p)^{n-k}, \qquad k \in \{0, 1, \ldots, n\}.
+\]
+Se tiene $\mathbb{E}[S_n] = np$ y $\operatorname{Var}(S_n) = np(1-p)$.
+\end{definicion}
+
+% ----------------------------------------------------------------------------
+\subsection{Variables aleatorias continuas}
+\label{subsec:va-continuas}
+
+\begin{definicion}[Uniforme continua]
+\label{def:uniforme}
+Una variable $U$ tiene distribución \emph{uniforme en $[0,1]$}, y se escribe $U \sim \mathcal{U}(0,1)$, si su densidad es $f_U(u) = \mathbf{1}_{[0,1]}(u)$. Su FDA es $F_U(u) = u$ sobre $[0,1]$, y satisface $\mathbb{E}[U] = 1/2$, $\operatorname{Var}(U) = 1/12$.
+\end{definicion}
+
+Esta distribución es el punto de partida de cualquier generador pseudoaleatorio: \\ \texttt{numpy.random.rand()}, el generador Mersenne Twister y sus sucesores devuelven por defecto realizaciones de $\mathcal{U}(0,1)$. Toda variable aleatoria más compleja se obtiene transformando estas muestras uniformes (véase §\ref{subsec:transformacion-inversa}).
+
+\begin{definicion}[Normal]
+\label{def:normal}
+Una variable $X$ tiene distribución \emph{normal} (o gaussiana) de parámetros $\mu \in \mathbb{R}$ y $\sigma > 0$, y se escribe $X \sim \mathcal{N}(\mu, \sigma^2)$, si su densidad es
+\[
+    f_X(x) = \frac{1}{\sigma\sqrt{2\pi}}\exp\!\left(-\frac{(x-\mu)^2}{2\sigma^2}\right), \qquad x \in \mathbb{R}.
+\]
+Satisface $\mathbb{E}[X] = \mu$, $\operatorname{Var}(X) = \sigma^2$. Cuando $\mu = 0$ y $\sigma = 1$ se denomina \emph{normal estándar} y se denota $Z \sim \mathcal{N}(0,1)$.
+\end{definicion}
+
+La normal es la distribución central del presente trabajo: los incrementos aleatorios que simulan los rollouts del algoritmo MCTS son realizaciones $Z \sim \mathcal{N}(0,1)$, combinadas con una deriva $\mu$ y una volatilidad $\sigma$ calibradas a partir del histórico.
+
+\begin{definicion}[Log-normal]
+\label{def:lognormal}
+Una variable $Y > 0$ tiene distribución \emph{log-normal} si $\ln Y \sim \mathcal{N}(\mu, \sigma^2)$. Se tiene
+\[
+    \mathbb{E}[Y] = e^{\mu + \sigma^2/2},
+    \qquad
+    \operatorname{Var}(Y) = \left(e^{\sigma^2} - 1\right)e^{2\mu + \sigma^2}.
+\]
+\end{definicion}
+
+La log-normal es la distribución natural del \emph{precio} bajo el modelo de movimiento Browniano geométrico (véase §\ref{sec:mdp-mcts}): si el log-retorno diario es gaussiano, el precio es log-normal.
+
+\begin{definicion}[Exponencial]
+\label{def:exponencial}
+Una variable $T \geq 0$ tiene distribución \emph{exponencial} de parámetro $\lambda > 0$ si su densidad es $f_T(t) = \lambda e^{-\lambda t}$ para $t \geq 0$. Se tiene $\mathbb{E}[T] = 1/\lambda$, $\operatorname{Var}(T) = 1/\lambda^2$.
+\end{definicion}
+
+La exponencial no interviene directamente en el programa, pero aparece en los ejemplos del PDF de Aràndiga (tiempos entre eventos en colas, §7 de~\cite{arandiga}) y se incluye aquí por completitud notacional.
+
+% ----------------------------------------------------------------------------
+\subsection{Método de la transformación inversa}
+\label{subsec:transformacion-inversa}
+
+El método de la transformación inversa es el resultado teórico que permite generar muestras de \emph{cualquier} distribución a partir de muestras uniformes, y constituye la base de todos los generadores de variables aleatorias.
+
+\begin{teorema}[Transformación inversa]
+\label{teorema:transformacion-inversa}
+Sea $F: \mathbb{R} \to [0,1]$ una función de distribución continua y estrictamente creciente sobre el soporte de la distribución asociada, y sea $F^{-1}: (0,1) \to \mathbb{R}$ su inversa. Si $U \sim \mathcal{U}(0,1)$, entonces la variable aleatoria
+\[
+    X \;=\; F^{-1}(U)
+\]
+tiene función de distribución $F$.
+\end{teorema}
+
+\begin{proof}
+Basta calcular la función de distribución de $X$. Para cualquier $x$ en el soporte,
+\[
+    \mathbb{P}(X \leq x)
+    \;=\; \mathbb{P}\!\left(F^{-1}(U) \leq x\right)
+    \;=\; \mathbb{P}\!\left(U \leq F(x)\right)
+    \;=\; F(x),
+\]
+donde la segunda igualdad se sigue del hecho de que $F$ es estrictamente creciente (y por tanto $F^{-1}(U) \leq x \iff U \leq F(x)$), y la tercera de que $U \sim \mathcal{U}(0,1)$ cumple $\mathbb{P}(U \leq u) = u$ para $u \in [0,1]$. Luego $X$ tiene FDA $F$, como se quería.\qed
+\end{proof}
+
+\begin{ejemplo}[Generación de una exponencial]
+\label{ej:exp-inversa}
+La FDA de una exponencial de parámetro $\lambda$ es $F(t) = 1 - e^{-\lambda t}$ para $t \geq 0$. Invirtiéndola, $F^{-1}(u) = -\ln(1-u)/\lambda$. Por el Teorema~\ref{teorema:transformacion-inversa}, si $U \sim \mathcal{U}(0,1)$, entonces $T = -\ln(1-U)/\lambda$ sigue distribución exponencial. (En la práctica, como $1 - U \sim \mathcal{U}(0,1)$ también, se suele simplificar a $T = -\ln U / \lambda$.)
+\end{ejemplo}
+
+% ----------------------------------------------------------------------------
+\subsection{Generación de la normal estándar}
+\label{subsec:generacion-normal}
+
+El método de la transformación inversa no se aplica directamente a la distribución normal porque su FDA $\Phi(x) = \int_{-\infty}^{x}(2\pi)^{-1/2}e^{-t^2/2}\,dt$ no admite expresión en forma cerrada. En la práctica se recurre a dos técnicas alternativas:
+
+\paragraph{Método de Box--Muller.} Si $U_1, U_2$ son independientes y uniformes en $(0,1)$, entonces las variables
+\[
+    Z_1 = \sqrt{-2\ln U_1}\,\cos(2\pi U_2),
+    \qquad
+    Z_2 = \sqrt{-2\ln U_1}\,\sin(2\pi U_2)
+\]
+son $\mathcal{N}(0,1)$ independientes. Esta identidad se demuestra pasando a coordenadas polares en la densidad gaussiana bivariante.
+
+\paragraph{Método de rechazo.} Se generan candidatos con una densidad sencilla, por ejemplo doble-exponencial, y se aceptan con probabilidad proporcional al cociente entre la densidad gaussiana y la densidad de muestreo.
+
+En el presente programa, la generación de muestras gaussianas se delega en \\ \texttt{numpy.random.normal()}, cuya implementación actual (generador \emph{Ziggurat}) es una variante optimizada del método de rechazo. El lector puede sustituirla mentalmente por cualquiera de los dos métodos anteriores sin alterar la validez teórica del análisis.
+
+% ----------------------------------------------------------------------------
+\subsection{Conexión con el programa \texttt{mcts\_simple\_TSLA.py}}
+\label{subsec:conexion-programa-va}
+
+Identificamos explícitamente qué variables aleatorias aparecen en el código y en qué línea se generan:
+
+\begin{itemize}
+    \item \textbf{Gaussianas estándar $Z_i \sim \mathcal{N}(0,1)$.} Son la fuente de aleatoriedad de todo el programa. Se generan mediante \texttt{np.random.normal(0, 1, size=H)}, donde \texttt{H} = \texttt{DIAS\_ROLLOUT}, y alimentan el modelo de movimiento Browniano geométrico que genera las trayectorias de precios simulados en cada rollout (véase §\ref{sec:mdp-mcts}). La calibración $(\mu, \sigma)$ se estima sobre una ventana móvil de 60 días.
+
+    \item \textbf{Log-normales de precio.} Como consecuencia del paso anterior, los precios simulados $P_{t+h}$ siguen, condicionados a $P_t$, una distribución log-normal (Definición~\ref{def:lognormal}). Aunque el programa no genera log-normales \emph{directamente}, la distribución log-normal es el objeto que realmente muestreamos.
+
+    \item \textbf{Uniformes discretas.} En las rondas del rollout en las que todavía no hay información suficiente para aplicar una política informada, el algoritmo escoge una acción aleatoria de $\mathcal{A}$ mediante \texttt{random.choice(ACCIONES)}, lo que equivale a muestrear una uniforme discreta sobre $\{1, \ldots, 11\}$.
+\end{itemize}
+
+En la Sección~\ref{sec:monte-carlo} veremos que estas muestras individuales se combinan en estimadores de tipo media muestral, cuya convergencia queda garantizada por las leyes de los grandes números.

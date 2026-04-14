@@ -37,7 +37,7 @@ TICKER        = "EQQB.DE"  # Invesco NASDAQ-100 UCITS ETF (XETRA)
 PERIOD        = "2y"       # Período de descarga: "1y", "6mo", "2y", etc.
 DATOS_LOCAL   = os.path.join(os.path.dirname(__file__), f"precios_NASDAQ.csv")
 CAPITAL_INIT  = 10_000   # Capital inicial en USD
-ITERACIONES   = 1000     # Iteraciones MCTS por decisión (más = mejor, más lento)
+ITERACIONES   = 5000     # Iteraciones MCTS por decisión (más = mejor, más lento)
 DIAS_ROLLOUT  = 60       # Días simulados en cada rollout (horizonte de visión)
 VENTANA_CALIB = 60       # Días para estimar mu y sigma (calibración rolling)
 SEMILLA       = 42       # Semilla para reproducibilidad
