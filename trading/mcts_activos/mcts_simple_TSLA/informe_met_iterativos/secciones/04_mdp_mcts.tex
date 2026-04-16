@@ -1,0 +1,317 @@
+% ============================================================================
+% §4 MDP, UCB1, MCTS Y GBM
+% ============================================================================
+\section{MDP, UCB1, MCTS y el motor GBM}
+\label{sec:mdp-mcts}
+
+Esta sección formaliza el algoritmo estudiado. En §\ref{subsec:mdp} introducimos el lenguaje de los procesos de decisión de Markov (MDP); en §\ref{subsec:mdp-trading} lo instanciamos sobre nuestro problema de \emph{trading} sobre TSLA. En §\ref{subsec:gbm} presentamos el modelo de movimiento Browniano geométrico, motor estocástico que genera las trayectorias simuladas en los \emph{rollouts}; su derivación rigurosa mediante el lema de Itô se remite al Anexo~\ref{anexo:gbm}. Las §§\ref{subsec:ucb1}--\ref{subsec:mcts-4pasos} describen la política UCB1 y el ciclo de cuatro pasos del MCTS, con pseudocódigo algorítmico. Finalmente, §\ref{subsec:convergencia-uct} establece la convergencia del algoritmo apoyándose en la Ley Fuerte de los Grandes Números ya demostrada en §\ref{sec:monte-carlo}, y §\ref{subsec:seleccion-final} discute la política de selección final en la raíz.
+
+% ----------------------------------------------------------------------------
+\subsection{Procesos de decisión de Markov}
+\label{subsec:mdp}
+
+\begin{definicion}[Proceso de decisión de Markov]
+\label{def:mdp}
+Un \emph{proceso de decisión de Markov} es una cuádrupla $\mathcal{M} = (\mathcal{S}, \mathcal{A}, P, R)$ donde:
+\begin{itemize}
+    \item $\mathcal{S}$ es un conjunto de \emph{estados};
+    \item $\mathcal{A}$ es un conjunto de \emph{acciones} disponibles;
+    \item $P: \mathcal{S} \times \mathcal{A} \times \mathcal{S} \to [0,1]$ es el \emph{núcleo de transición}, con $P(s' \mid s, a) = \mathbb{P}(S_{t+1} = s' \mid S_t = s, A_t = a)$;
+    \item $R: \mathcal{S} \times \mathcal{A} \to \mathbb{R}$ es la \emph{función de recompensa}.
+\end{itemize}
+La \emph{propiedad de Markov} exige que la distribución condicional de $S_{t+1}$ dado todo el pasado dependa solamente de $(S_t, A_t)$.
+\end{definicion}
+
+Una \emph{política} es una regla de decisión $\pi: \mathcal{S} \to \mathcal{A}$ (o, en general, estocástica: $\pi(a\mid s) \in [0,1]$). Fijada una política $\pi$ y un estado inicial $s_0$, se define la \emph{función de valor} y la \emph{función Q} por
+\[
+    V^\pi(s) = \mathbb{E}_\pi\!\left[\sum_{t \geq 0} \gamma^t R(S_t, A_t) \,\Big|\, S_0 = s\right],
+    \qquad
+    Q^\pi(s, a) = \mathbb{E}_\pi\!\left[\sum_{t\geq 0} \gamma^t R(S_t, A_t) \,\Big|\, S_0 = s, A_0 = a\right],
+\]
+donde $\gamma \in (0, 1]$ es un factor de descuento (en el presente problema, con horizonte finito $H$, tomamos $\gamma = 1$). La política óptima maximiza el valor esperado:
+\[
+    \pi^* \in \arg\max_{\pi} V^\pi(s), \qquad V^*(s) = V^{\pi^*}(s).
+\]
+Un resultado clásico caracteriza $V^*$ como punto fijo de la \emph{ecuación de optimalidad de Bellman}:
+\begin{equation}
+    V^*(s) \;=\; \max_{a \in \mathcal{A}}\left\{ R(s,a) + \gamma \sum_{s'} P(s'\mid s,a)\, V^*(s') \right\}.
+    \label{eq:bellman}
+\end{equation}
+La resolución directa de~\eqref{eq:bellman} por métodos deterministas (iteración de valor, iteración de política) requiere enumerar el espacio $\mathcal{S}$, lo cual es inviable en nuestro problema. MCTS esquiva esta enumeración mediante simulación estocástica.
+
+% ----------------------------------------------------------------------------
+\subsection{Formulación del MDP del trading}
+\label{subsec:mdp-trading}
+
+Instanciamos la Definición~\ref{def:mdp} sobre el problema introducido en §\ref{subsec:problema}.
+
+\paragraph{Espacio de estados.} Un estado $s_t \in \mathcal{S}$ es un vector que recoge toda la información relevante en el instante $t$:
+\[
+    s_t \;=\; \left(\; P_t,\ \operatorname{MA}_{20}(t),\ \operatorname{RSI}_{14}(t),\ \tau_t,\ C_t,\ N_t \;\right),
+\]
+donde:
+\begin{itemize}
+    \item $P_t$ es el precio de cierre del activo en $t$;
+    \item $\operatorname{MA}_{20}(t) = \tfrac{1}{20}\sum_{k=0}^{19} P_{t-k}$ es la media móvil simple de 20 días;
+    \item $\operatorname{RSI}_{14}(t)$ es el \emph{Relative Strength Index} de 14 días;
+    \item $\tau_t$ es el número de sesiones transcurridas desde el inicio;
+    \item $C_t$ es el efectivo disponible en la cartera;
+    \item $N_t$ es el número de acciones poseídas.
+\end{itemize}
+
+\paragraph{Espacio de acciones.} $\mathcal{A}$ es el conjunto de once acciones fraccionarias introducido en §\ref{subsec:problema}: cinco niveles de compra (10\%, 25\%, 50\%, 75\%, 100\% del efectivo disponible), mantener, y cinco niveles de venta (10\%, 25\%, 50\%, 75\%, 100\% de las acciones poseídas).
+
+\paragraph{Transición.} Condicionada a un precio actual $P_t$, la dinámica del precio sigue un GBM (§\ref{subsec:gbm}). Las componentes no estocásticas del estado (MA, RSI, $\tau$, $C$, $N$) se actualizan de forma determinista a partir de $P_{t+1}$ y la acción ejecutada.
+
+\paragraph{Recompensa.} La recompensa es \emph{terminal}: vale cero en todo instante intermedio y, al final del horizonte $H$,
+\[
+    R_T \;=\; \frac{\operatorname{Valor\_Cartera}(s_T) - \operatorname{Valor\_Cartera}(s_0)}{\operatorname{Valor\_Cartera}(s_0)},
+\]
+es decir, el retorno porcentual obtenido durante el rollout. Esta elección simplifica la retropropagación del MCTS y evita el balance delicado entre recompensas intermedias y finales.
+
+% ----------------------------------------------------------------------------
+\subsection{Movimiento Browniano geométrico}
+\label{subsec:gbm}
+
+El modelo estocástico utilizado para simular trayectorias de precios es el \emph{movimiento Browniano geométrico}. Bajo la hipótesis de log-retornos gaussianos independientes, el precio $S_t$ satisface la ecuación diferencial estocástica
+\begin{equation}
+    dS_t \;=\; \mu S_t \, dt + \sigma S_t \, dW_t,
+    \label{eq:sde-gbm}
+\end{equation}
+donde $\mu \in \mathbb{R}$ es la \emph{deriva}, $\sigma > 0$ es la \emph{volatilidad} y $\{W_t\}_{t\geq 0}$ es un movimiento Browniano estándar. La aplicación del lema de Itô a $\ln S_t$ permite resolver~\eqref{eq:sde-gbm} de forma cerrada:
+\begin{equation}
+    S_{t+h} \;=\; S_t \exp\!\left( \left(\mu - \tfrac{\sigma^2}{2}\right) h + \sigma \sqrt{h}\, Z \right), \qquad Z \sim \mathcal{N}(0,1).
+    \label{eq:gbm-exacta}
+\end{equation}
+La derivación rigurosa de~\eqref{eq:gbm-exacta} a partir de~\eqref{eq:sde-gbm} se recoge en el Anexo~\ref{anexo:gbm}. En este informe utilizamos~\eqref{eq:gbm-exacta} como \emph{fórmula de actualización exacta} paso a paso, sin necesidad de discretizaciones de tipo Euler--Maruyama, lo que elimina el sesgo del esquema numérico.
+
+\paragraph{Calibración.} Los parámetros $(\mu, \sigma)$ se estiman a partir de los log-retornos observados
+\[
+    r_k \;=\; \ln\!\left(\frac{P_{k}}{P_{k-1}}\right)
+\]
+sobre una ventana móvil de los últimos $W = 60$ días. Los estimadores máximo-verosimilitud son
+\[
+    \hat{\mu}_{\mathrm{diaria}} = \bar{r} + \frac{\hat\sigma_r^2}{2}, \qquad \hat\sigma_{\mathrm{diaria}} = \hat\sigma_r,
+\]
+donde $\bar r$ y $\hat\sigma_r^2$ son la media y la varianza muestrales de $\{r_{t-W+1}, \ldots, r_t\}$. La corrección $\hat\sigma_r^2/2$ convierte la media de log-retornos en la deriva propia del GBM (consecuencia directa de~\eqref{eq:gbm-exacta}). Como el paso temporal elegido es diario, tomamos $h = 1$ en~\eqref{eq:gbm-exacta}.
+
+\paragraph{Distribución del precio.} La Definición~\ref{def:lognormal} aclara que, condicionado a $S_t$, el precio $S_{t+h}$ sigue una distribución log-normal. Esta propiedad se usará en la Sección~\ref{sec:resultados} al interpretar el diagrama de violín de retornos simulados.
+
+% ----------------------------------------------------------------------------
+\subsection{UCB1 y el dilema explotación--exploración}
+\label{subsec:ucb1}
+
+Un subproblema del MCTS es la elección de acción en los nodos internos del árbol durante la fase de selección. Este subproblema es un caso particular del \emph{multi-armed bandit}, introducido por Auer, Cesa-Bianchi y Fischer~\cite{auer2002} en el marco de aprendizaje en línea. La regla UCB1 resuelve el compromiso entre \emph{explotar} la acción con mejor valor estimado y \emph{explorar} acciones con información escasa mediante la selección
+\begin{equation}
+    a^*_{\text{UCB1}}(s) \;=\; \arg\max_{a \in \mathcal{A}(s)} \left\{ \underbrace{\frac{Q(s,a)}{N(s,a)}}_{\text{valor estimado}} \;+\; c\, \underbrace{\sqrt{\frac{\ln N(s)}{N(s,a)}}}_{\text{término de exploración}} \right\},
+    \label{eq:ucb1}
+\end{equation}
+donde $Q(s,a)$ es la suma acumulada de retornos observados en $s$ bajo la acción $a$, $N(s,a)$ es el contador de visitas de la arista $(s,a)$, $N(s) = \sum_{a'} N(s,a')$ y $c > 0$ es la \emph{constante de exploración}. Valores pequeños de $c$ producen políticas explotadoras (decide rápidamente por la opción de mayor valor estimado); valores grandes favorecen la exploración (reparte visitas entre muchas acciones). El valor $c = \sqrt{2}$ es el canónico en la literatura y es el que utilizamos en el programa.
+
+\begin{observacion}[Garantía de visitas]
+\label{obs:visitas}
+Si $N(s,a)$ permaneciera acotado mientras $N(s) \to \infty$, el término de exploración de~\eqref{eq:ucb1} divergería, forzando la selección de $a$. Por tanto, toda acción se visita un número arbitrariamente grande de veces conforme crecen las iteraciones: este hecho es el que permitirá aplicar la Ley Fuerte de los Grandes Números en §\ref{subsec:convergencia-uct}.
+\end{observacion}
+
+% ----------------------------------------------------------------------------
+\subsection{El algoritmo MCTS: ciclo de cuatro pasos}
+\label{subsec:mcts-4pasos}
+
+El algoritmo Monte Carlo Tree Search mantiene un árbol parcialmente expandido, enraizado en el estado actual $s_0$. Cada nodo almacena dos estadísticas: el contador de visitas $N$ y la suma acumulada de retornos $Q$. Cada iteración del algoritmo ejecuta, en orden, los cuatro pasos siguientes.
+
+\begin{enumerate}
+    \item[\textbf{(1) Selección.}] Partiendo de la raíz, se desciende por el árbol eligiendo en cada nodo interno la acción que maximiza~\eqref{eq:ucb1}, hasta alcanzar un nodo hoja. Esta fase se apoya exclusivamente en estadísticas ya recogidas en iteraciones previas y no consume recursos estocásticos.
+
+    \item[\textbf{(2) Expansión.}] Si el nodo hoja no es terminal y ha sido visitado antes, se le añade un nuevo nodo hijo correspondiente a una acción aún no probada. Esta operación hace crecer el árbol en una unidad.
+
+    \item[\textbf{(3) Rollout.}] Desde el nodo recién creado, se simula una trayectoria completa del MDP hasta el horizonte $H$, utilizando una política por defecto (en nuestro caso, uniforme sobre $\mathcal{A}$) y generando precios con el modelo GBM~\eqref{eq:gbm-exacta}. La trayectoria devuelve un retorno escalar $X$ que constituye \emph{una muestra} del estimador Monte Carlo estudiado en §\ref{sec:monte-carlo}.
+
+    \item[\textbf{(4) Retropropagación.}] El retorno $X$ se propaga hacia la raíz actualizando, para cada nodo $(s,a)$ del camino recorrido en la fase de selección,
+    \[
+        N(s,a) \leftarrow N(s,a) + 1, \qquad Q(s,a) \leftarrow Q(s,a) + X.
+    \]
+\end{enumerate}
+
+El pseudocódigo~\ref{alg:mcts} resume la lógica completa del algoritmo.
+
+\begin{algorithm}[H]
+\caption{Monte Carlo Tree Search (UCT)}
+\label{alg:mcts}
+\begin{algorithmic}[1]
+\Function{MCTS}{$s_0$, iteraciones $n$, horizonte $H$}
+    \State Crear raíz con estado $s_0$, $N = 0$, $Q = 0$
+    \For{$k = 1$ \textbf{to} $n$}
+        \State $(\text{camino}, \text{hoja}) \gets \Call{Seleccion}{\text{raíz}}$ \Comment{desciende por UCB1}
+        \State $\text{nodo}_{\text{nuevo}} \gets \Call{Expansion}{\text{hoja}}$
+        \State $X \gets \Call{Rollout}{\text{estado}(\text{nodo}_{\text{nuevo}}), H}$
+        \State \Call{Retropropagacion}{$\text{camino} \cup \{\text{nodo}_{\text{nuevo}}\}$, $X$}
+    \EndFor
+    \State \Return $\arg\max_{a} N(\text{raíz}, a)$ \Comment{política \emph{max-visits}}
+\EndFunction
+\Statex
+\Function{Seleccion}{$\text{nodo}$}
+    \State $\text{camino} \gets [\,]$
+    \While{$\text{nodo}$ es interno y completamente expandido}
+        \State $a \gets \arg\max_{a \in \mathcal{A}} \left[ Q(\text{nodo},a)/N(\text{nodo},a) + c\sqrt{\ln N(\text{nodo}) / N(\text{nodo},a)} \right]$
+        \State $\text{camino.append}((\text{nodo}, a))$
+        \State $\text{nodo} \gets$ hijo de $\text{nodo}$ por $a$
+    \EndWhile
+    \State \Return $(\text{camino}, \text{nodo})$
+\EndFunction
+\Statex
+\Function{Rollout}{$s$, $H$}
+    \State $s' \gets s$
+    \For{$t = 1$ \textbf{to} $H$}
+        \State Muestrear $Z \sim \mathcal{N}(0,1)$
+        \State Actualizar precio por~\eqref{eq:gbm-exacta}
+        \State Elegir $a \sim \text{Uniforme}(\mathcal{A})$
+        \State $s' \gets$ siguiente estado
+    \EndFor
+    \State \Return $R_T(s')$ \Comment{retorno porcentual final}
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+% ----------------------------------------------------------------------------
+\subsection{Convergencia del algoritmo UCT}
+\label{subsec:convergencia-uct}
+
+Una vez establecidos los ingredientes, podemos presentar la justificación de la convergencia de MCTS apoyándonos directamente en los resultados de §\ref{sec:monte-carlo}.
+
+Fijemos un estado $s_0$ (la raíz) y consideremos, para cada acción $a \in \mathcal{A}$, la sucesión de retornos $\{X_i(a)\}_{i \geq 1}$ observados en los rollouts que pasaron por la arista $(s_0, a)$. Aunque estos rollouts no son, en rigor, idénticamente distribuidos a lo largo del tiempo (la política del resto del árbol cambia conforme avanzan las iteraciones), la Observación~\ref{obs:visitas} garantiza que $N(s_0, a) \to \infty$ cuando el número total de iteraciones $n \to \infty$. En virtud del Corolario~\ref{cor:convergencia-estimador}, aplicado en el régimen asintótico en el que la política del subárbol bajo $a$ ha alcanzado su versión óptima,
+\[
+    \frac{Q(s_0, a)}{N(s_0, a)} \;\xrightarrow{\text{c.s.}}\; \mathbb{E}[R_T \mid s_0, a].
+\]
+La acción seleccionada por MCTS, $\arg\max_a Q(s_0,a)/N(s_0,a)$, converge por tanto a $\arg\max_a \mathbb{E}[R_T \mid s_0, a]$, que es precisamente la acción óptima en la raíz según el MDP definido en §\ref{subsec:mdp-trading}. La convergencia al \emph{subárbol} completo, en todas sus profundidades, se demuestra por inducción sobre la profundidad, utilizando en cada paso el mismo argumento.
+
+Este razonamiento, deliberadamente informal en los detalles técnicos (en particular, en el cruce entre las hipótesis i.i.d.\ de la LLN y el carácter no estacionario de los rollouts), captura la esencia de la convergencia del método. El enunciado formal de Kocsis y Szepesvári~\cite{kocsis2006}, con las cotas cuantitativas correspondientes al sesgo y a la probabilidad de error, se recoge en el Anexo~\ref{anexo:kocsis}.
+
+% ----------------------------------------------------------------------------
+\subsection{Interpretación como método iterativo lineal}
+\label{subsec:metodos-iterativos}
+
+La demostración anterior establece la convergencia de MCTS por vía probabilística, apoyándose en la Ley Fuerte de los Grandes Números. Existe, sin embargo, una lectura complementaria que encuadra el método dentro de la teoría clásica de \emph{métodos iterativos} para la resolución de sistemas de ecuaciones (Aràndiga, Tema~6). Esta relectura no aporta nuevas conclusiones matemáticas, pero ilumina la estructura del algoritmo, justifica cuantitativamente la elección de la constante de exploración $c$ y proporciona un marco natural para discutir criterios de parada alternativos.
+
+\subsubsection*{La actualización $Q/N$ como recurrencia lineal}
+
+Fijemos una acción $a \in \mathcal{A}(s_0)$ en la raíz y denotemos por $q^{(k)}(a) := Q(s_0,a) / N(s_0,a)$ el estimador de su valor tras $k$ iteraciones totales del algoritmo. Cuando la iteración $k+1$ selecciona la acción $a$ y obtiene el retorno $X_{k+1}(a)$ en el \emph{rollout}, la actualización de las estadísticas $Q \leftarrow Q + X$, $N \leftarrow N + 1$ se traduce, tras dividir, en
+\begin{equation}
+    q^{(k+1)}(a) \;=\; \underbrace{\frac{N^{(k)}(a)}{N^{(k)}(a) + 1}}_{1 - \alpha_k} \, q^{(k)}(a) \;+\; \underbrace{\frac{1}{N^{(k)}(a) + 1}}_{\alpha_k} \, X_{k+1}(a),
+    \label{eq:iterativo-q}
+\end{equation}
+con $\alpha_k := 1/(N^{(k)}(a)+1) \in (0,1]$. La expresión~\eqref{eq:iterativo-q} es formalmente idéntica al paso de un método iterativo lineal: $q^{(k+1)}(a)$ es combinación convexa del iterado anterior y de una \emph{entrada estocástica} $X_{k+1}(a)$ que hace el papel del término independiente $b$ del sistema $Ax = b$. La ``matriz de iteración'' se reduce aquí a un escalar,
+\[
+    Q_{\text{iter}}^{(k)} \;=\; 1 - \alpha_k \;=\; \frac{N^{(k)}(a)}{N^{(k)}(a) + 1},
+\]
+cuyo módulo satisface trivialmente $|Q_{\text{iter}}^{(k)}| < 1$ para todo $k$ tal que $N^{(k)}(a) \geq 0$, lo cual garantiza la condición $\rho < 1$ del Teorema de convergencia del Tema~6.
+
+\subsubsection*{Ecuación del error}
+
+Siguiendo el esquema de Aràndiga, definimos el error de estimación
+\[
+    e^{(k)}(a) \;:=\; q^{(k)}(a) - q^*(a), \qquad q^*(a) \;:=\; \mathbb{E}[R_T \mid s_0, a].
+\]
+Restando $q^*(a)$ en ambos miembros de~\eqref{eq:iterativo-q} y reordenando,
+\begin{equation}
+    e^{(k+1)}(a) \;=\; (1 - \alpha_k)\, e^{(k)}(a) \;+\; \alpha_k\, \bigl( X_{k+1}(a) - q^*(a) \bigr).
+    \label{eq:error-iterativo}
+\end{equation}
+La expresión~\eqref{eq:error-iterativo} es la versión estocástica de la ecuación del error $e^{(k+1)} = Q e^{(k)}$ del Tema~6, con un término adicional de ruido $\alpha_k (X_{k+1} - q^*)$ de media nula. La LLN garantiza que, cuando $k \to \infty$, el ruido se promedia a cero y $e^{(k)} \to 0$ casi seguramente. Más aún, la varianza del error satisface
+\[
+    \mathrm{Var}\bigl( e^{(k)}(a) \bigr) \;=\; \frac{\sigma^2(a)}{N^{(k)}(a)},
+\]
+donde $\sigma^2(a) = \mathrm{Var}(X_i(a))$, lo que reproduce la cota $\mathcal{O}(N^{-1/2})$ ya establecida por el Teorema~\ref{teorema:error-mc} de §\ref{sec:monte-carlo}.
+
+\subsubsection*{MCTS como Gauss--Seidel dirigido por UCB1}
+
+En un método iterativo clásico, el patrón de actualización de las componentes del vector $x^{(k)} \in \mathbb{R}^n$ define el método:
+
+\begin{itemize}
+    \item \textbf{Jacobi} actualiza las $n$ componentes \emph{simultáneamente} en cada iteración, todas a partir del iterado anterior $x^{(k)}$.
+    \item \textbf{Gauss--Seidel} actualiza \emph{una componente por iteración}, recorriéndolas en orden cíclico y aprovechando en cada paso los valores más recientes.
+    \item \textbf{SOR} introduce un parámetro de relajación $\omega \in (0,2)$ que interpola entre sobrerelajación ($\omega > 1$) y subrelajación ($\omega < 1$) para minimizar el radio espectral $\rho(Q_\omega)$.
+\end{itemize}
+
+En el MCTS, el ``vector de iterados'' es $q^{(k)} = (q^{(k)}(a))_{a \in \mathcal{A}}$, una componente por acción. La observación clave es que cada iteración del algoritmo actualiza \emph{exactamente una componente}: aquella correspondiente a la acción $a^*$ seleccionada por UCB1 en la raíz. Las restantes $|\mathcal{A}| - 1$ componentes permanecen inalteradas. Esto identifica al MCTS como una variante de \textbf{Gauss--Seidel} en la cual el orden cíclico de recorrido se sustituye por una \emph{política adaptativa de selección}, dictada por la fórmula~\eqref{eq:ucb1}. La Figura~\ref{fig:patron-actualizacion} ilustra gráficamente esta distinción para una simulación de $30$ iteraciones sobre el espacio de $11$ acciones del problema TSLA.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{figuras/patron_actualizacion.png}
+    \caption{Patrones de actualización de las componentes $q^{(k)}(a)$ en tres métodos iterativos. En Jacobi~(a), cada iteración actualiza todas las acciones de forma paralela. En Gauss--Seidel~(b), se actualiza una única acción por iteración, en orden cíclico. En MCTS con UCB1~(c), se actualiza una acción por iteración elegida adaptativamente: tras una fase inicial de exploración uniforme (primeras $|\mathcal{A}|$ iteraciones, en las que todas las acciones tienen $N=0$ y reciben prioridad máxima), la política concentra las visitas en las acciones más prometedoras (aquí, \texttt{COMPRAR\_100} y \texttt{VENDER\_100}).}
+    \label{fig:patron-actualizacion}
+\end{figure}
+
+\subsubsection*{El papel de $c$ como parámetro de relajación}
+
+La analogía con SOR permite interpretar con precisión la constante de exploración $c$ de la fórmula UCB1~\eqref{eq:ucb1}. El parámetro $\omega$ del SOR controla el peso relativo entre el iterado anterior y la corrección de Gauss--Seidel: un $\omega$ óptimo $\bar\omega$ minimiza el radio espectral $\rho(Q_\omega)$ y por tanto la velocidad de convergencia. De manera paralela, $c$ regula el equilibrio entre:
+\begin{itemize}
+    \item \textbf{Explotación} ($c$ pequeño, análogo a $\omega < 1$): el algoritmo visita reiteradamente la acción con mejor $q^{(k)}$, actualizando sólo una componente y ralentizando la actualización del resto. Riesgo: quedar atrapado en óptimos locales si el valor empírico temprano es engañoso.
+    \item \textbf{Exploración} ($c$ grande, análogo a $\omega > 1$): el algoritmo reparte las iteraciones entre todas las acciones, garantizando $N(a) \to \infty$ para todas, pero a costa de visitar menos las acciones realmente prometedoras.
+\end{itemize}
+
+El valor canónico $c = \sqrt{2}$, adoptado en \texttt{mcts\_simple\_TSLA.py} (línea~382), corresponde en la analogía SOR al caso $\omega = 1$ (Gauss--Seidel puro) y está justificado por la cota de regret $\mathcal{O}(\ln n)$ de Auer, Cesa-Bianchi y Fischer~\cite{auer2002}. Valores $c \neq \sqrt{2}$ introducirían una sobrerelajación o subrelajación sobre el balance explotación--exploración; en este trabajo mantenemos $c = \sqrt{2}$.
+
+\subsubsection*{Convergencia empírica y ventaja de UCB1}
+
+La Figura~\ref{fig:convergencia-iterativa} valida empíricamente la cota $|e^{(k)}(a)| = \mathcal{O}(N^{-1/2})$ derivada de~\eqref{eq:error-iterativo}, en una simulación de $n=5\,000$ iteraciones sobre un problema sintético con $11$ acciones y valores reales conocidos. El panel~(a) muestra el decaimiento log-log del error para cada acción, comparado con la cota teórica $\sigma/\sqrt{N}$; el panel~(b) revela la estructura de visitas final: UCB1 concentra más del $90\,\%$ de las iteraciones en las dos acciones óptimas (aquí \texttt{C100} y \texttt{V100}, con valores reales $q^*=1{.}0$ y $q^*=0{.}7$), reservando sólo un puñado de visitas para el resto. Este reparto no uniforme es precisamente lo que distingue al MCTS de un Gauss--Seidel cíclico: la información acumulada en iteraciones previas \emph{retroalimenta} la elección del siguiente paso iterativo, acelerando la localización del óptimo global sin perder la garantía asintótica de convergencia.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figuras/convergencia_iterativa.png}
+    \caption{Convergencia del error del estimador~\eqref{eq:error-iterativo} en una simulación MCTS con $n=5\,000$ iteraciones. \textbf{(a)} Error empírico $|e^{(k)}(a)| = |q^{(k)}(a) - q^*(a)|$ frente al número de visitas $N(a)$, en escala doblemente logarítmica, comparado con la cota teórica $\sigma/\sqrt{N}$ (línea discontinua negra). La pendiente $-1/2$ se respeta para todas las acciones. \textbf{(b)} Número final de visitas por acción: UCB1 concentra las iteraciones en las dos acciones óptimas (\texttt{C100} y \texttt{V100}), con valores reales $q^*=1{.}0$ y $q^*=0{.}7$, dejando a las demás cerca del mínimo necesario para descartarlas como subóptimas.}
+    \label{fig:convergencia-iterativa}
+\end{figure}
+
+\subsubsection*{Criterio de parada adaptativo}
+
+En el Tema~6, un criterio de parada natural para un método iterativo con $\|Q\| < 1$ es detener las iteraciones cuando la diferencia entre iterados consecutivos es pequeña:
+\begin{equation}
+    \|x^{(k)} - x^{(k-1)}\| \;\leq\; \varepsilon \cdot \frac{1 - \|Q\|}{\|Q\|}.
+    \label{eq:parada-adaptativa}
+\end{equation}
+En el caso del MCTS, el programa \texttt{mcts\_simple\_TSLA.py} utiliza un criterio \emph{fijo} de $\texttt{ITERACIONES} = 5\,000$ por decisión. Una alternativa adaptativa, inspirada en~\eqref{eq:parada-adaptativa}, sería detener el algoritmo cuando la acción mejor estimada se estabilice:
+\[
+    \left| q^{(k)}(a^*) - q^{(k-1)}(a^*) \right| \;\leq\; \varepsilon,
+    \qquad a^* = \arg\max_a q^{(k)}(a).
+\]
+Equivalentemente, puede usarse el error estándar $\sigma(a)/\sqrt{N(a)} \leq \varepsilon$, que es la traducción probabilística directa de~\eqref{eq:parada-adaptativa}. No implementamos esta variante en el presente trabajo, pero queda señalada como línea de mejora natural en §\ref{sec:discusion}.
+
+\subsubsection*{Resumen de la analogía}
+
+La Tabla~\ref{tab:analogia-iterativo} sintetiza las correspondencias establecidas entre los elementos del Tema~6 (métodos iterativos lineales) y los del MCTS estudiado en este informe.
+
+\begin{table}[H]
+    \centering
+    \caption{Correspondencia entre métodos iterativos clásicos (Aràndiga, Tema~6) y MCTS.}
+    \label{tab:analogia-iterativo}
+    \begin{tabular}{@{}ll@{}}
+        \toprule
+        \textbf{Método iterativo clásico} & \textbf{Elemento correspondiente en MCTS} \\
+        \midrule
+        Iterado $x^{(k)} \in \mathbb{R}^n$ & Vector $q^{(k)} = (q^{(k)}(a))_{a\in\mathcal{A}}$ \\
+        Solución $x^*$ con $Ax^* = b$ & Valor óptimo $q^*(a) = \mathbb{E}[R_T \mid s_0, a]$ \\
+        Término independiente $b$ & Retorno estocástico $X_{k+1}(a)$ del \emph{rollout} \\
+        Matriz de iteración $Q = M^{-1}N$ & Escalar $1 - \alpha_k = N(a)/(N(a)+1)$ \\
+        Radio espectral $\rho(Q) < 1$ & $|1 - \alpha_k| < 1 \;\forall k$ (trivial) \\
+        Error $e^{(k)} = x^{(k)} - x^*$ & Sesgo del estimador $q^{(k)}(a) - q^*(a)$ \\
+        Actualización cíclica (Gauss--Seidel) & Selección adaptativa por UCB1 \\
+        Parámetro de relajación $\omega$ (SOR) & Constante de exploración $c$ de UCB1 \\
+        Criterio de parada $\|x^{(k)}-x^{(k-1)}\| < \varepsilon$ & Error estándar $\sigma(a)/\sqrt{N(a)} < \varepsilon$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\noindent El MCTS es, en esencia, un método iterativo estocástico componente a componente, con un mecanismo de selección adaptativa de componente basado en UCB1. Esta lectura integra el algoritmo en el marco del Tema~6 de la asignatura y muestra que los principios cualitativos allí establecidos ---convergencia controlada por una ``matriz'' de iteración con $\rho < 1$, velocidad de convergencia vinculada al espectro, equilibrio entre sobrerelajación y estabilidad--- admiten una traducción probabilística directa al contexto del aprendizaje por refuerzo mediante simulación.
+
+% ----------------------------------------------------------------------------
+\subsection{Selección final en la raíz}
+\label{subsec:seleccion-final}
+
+Terminadas las $n$ iteraciones, el algoritmo debe comunicar al agente \emph{qué acción ejecutar} efectivamente en el estado actual. Existen dos políticas estándar:
+
+\begin{enumerate}
+    \item \textbf{Política \emph{max-$Q$}:} $a_{\text{ejec}} = \arg\max_a Q(s_0,a) / N(s_0,a)$. Selecciona la acción con mejor valor estimado.
+    \item \textbf{Política \emph{max-visits}:} $a_{\text{ejec}} = \arg\max_a N(s_0,a)$. Selecciona la acción con más visitas.
+\end{enumerate}
+
+A primera vista, la política max-$Q$ parecería la elección natural: ¿por qué no ir directamente a la mejor media muestral? Sin embargo, en presencia de varianza, la política max-visits es más \emph{robusta}. Un valor $Q/N$ muy alto con $N$ pequeño es estadísticamente poco fiable (el error típico del estimador es $\sigma / \sqrt{N}$, grande si $N$ es pequeño), mientras que una acción muy visitada ha sido confirmada repetidamente por UCB1 como prometedora. El programa \texttt{mcts\_simple\_TSLA.py} adopta la política \textbf{max-visits}, en línea con la práctica estándar de la literatura (AlphaGo, por ejemplo, emplea la misma regla). La política max-$Q$ se conserva únicamente para fines de diagnóstico en la gráfica \emph{ranking de acciones} de la Sección~\ref{sec:resultados}.

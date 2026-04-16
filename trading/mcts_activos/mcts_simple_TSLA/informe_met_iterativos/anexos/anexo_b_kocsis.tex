@@ -1,0 +1,64 @@
+% ============================================================================
+% ANEXO B — ENUNCIADO FORMAL DEL TEOREMA DE KOCSIS–SZEPESVÁRI (UCT)
+% ============================================================================
+\section{Convergencia formal del algoritmo UCT}
+\label{anexo:kocsis}
+
+Este anexo recoge el enunciado formal del resultado de convergencia del algoritmo UCT de Kocsis y Szepesvári~\cite{kocsis2006}, complementando la presentación descriptiva de §\ref{subsec:convergencia-uct}. Se introduce el concepto de \emph{regret} en el problema del multi-armed bandit y se enuncia la cota cuantitativa que justifica la selección UCB1 a lo largo del árbol.
+
+% ----------------------------------------------------------------------------
+\subsection*{B.1\quad El problema del multi-armed bandit y el \emph{regret}}
+
+Sea un conjunto de $K$ acciones (brazos). En cada ronda $t = 1, 2, \ldots, T$ el agente selecciona una acción $a_t \in \{1, \ldots, K\}$ y recibe una recompensa $X_{a_t,t} \in [0,1]$, donde las recompensas son variables aleatorias i.i.d.\ con medias $\mu_1, \ldots, \mu_K$ desconocidas. Sea $a^* = \arg\max_a \mu_a$ la acción óptima. El \emph{regret acumulado} tras $T$ rondas se define como
+\[
+    R_T \;=\; T\,\mu_{a^*} - \sum_{t=1}^{T} \mu_{a_t},
+\]
+es decir, la diferencia entre el retorno total de seleccionar siempre $a^*$ y el retorno total obtenido por la política seguida. Una política es \emph{asintóticamente óptima} si $R_T/T \to 0$ cuando $T \to \infty$.
+
+% ----------------------------------------------------------------------------
+\subsection*{B.2\quad La política UCB1 y su garantía de regret}
+
+Auer, Cesa-Bianchi y Fischer~\cite{auer2002} demostraron que la política UCB1,
+\[
+    a_t \;=\; \arg\max_{a} \left\{ \bar X_{a,t-1} + c\sqrt{\frac{\ln t}{N_{a,t-1}}} \right\},
+\]
+satisface, para cualquier $T \geq 1$:
+\begin{equation}
+    \mathbb{E}[R_T] \;\leq\; \sum_{a:\,\mu_a < \mu_{a^*}} \left(\frac{8\ln T}{\Delta_a} + \left(1 + \frac{\pi^2}{3}\right)\Delta_a\right),
+    \label{eq:regret-ucb1}
+\end{equation}
+donde $\Delta_a = \mu_{a^*} - \mu_a > 0$ es la \emph{brecha de suboptimalidad} de la acción $a$. La cota~\eqref{eq:regret-ucb1} es $\mathcal{O}(\ln T)$, lo que implica $R_T/T \to 0$: UCB1 es asintóticamente óptima. En particular, el número esperado de veces que se selecciona una acción subóptima $a$ crece solo logarítmicamente con $T$:
+\[
+    \mathbb{E}[N_{a,T}] \;\leq\; \frac{8\ln T}{\Delta_a^2} + 1 + \frac{\pi^2}{3}.
+\]
+
+% ----------------------------------------------------------------------------
+\subsection*{B.3\quad Extensión al árbol: el algoritmo UCT}
+
+El algoritmo UCT aplica la política UCB1 en cada nodo interno del árbol, tratando los hijos de cada nodo como los brazos de un bandit independiente. La dificultad teórica es que las recompensas observadas en un nodo no son i.i.d.: dependen de la política seguida en el subárbol, que cambia conforme avanza el algoritmo. Kocsis y Szepesvári resuelven este problema considerando la política del subárbol como estabilizada en la profundidad $d$ cuando la política en todas las profundidades $> d$ ha convergido.
+
+\begin{teorema}[Kocsis–Szepesvári, 2006]
+\label{teorema:kocsis}
+Considérese un árbol de decisión finito con profundidad $D$ y recompensas acotadas en $[0,1]$. Sea $T(s, a)$ el número de visitas a la arista $(s, a)$ tras $n$ iteraciones de UCT con constante de exploración $c > \sqrt{2}$. Entonces:
+\begin{enumerate}
+    \item Para toda acción $a$ y todo estado $s$, $T(s, a) \to \infty$ casi seguramente cuando $n \to \infty$.
+    \item El sesgo del valor estimado en la raíz satisface
+    \[
+        \left|\mathbb{E}[\hat{V}_n(s_0)] - V^*(s_0)\right| \;=\; \mathcal{O}\!\left(\frac{\log n}{n}\right).
+    \]
+    \item La probabilidad de seleccionar una acción subóptima en la raíz decrece polinomialmente: existe $\beta > 0$ tal que
+    \[
+        \mathbb{P}\!\left(\hat{a}_n \neq a^*\right) \;=\; \mathcal{O}\!\left(n^{-\beta}\right),
+    \]
+    donde $\hat{a}_n = \arg\max_a Q(s_0,a)/N(s_0,a)$ es la acción seleccionada tras $n$ iteraciones.
+\end{enumerate}
+\end{teorema}
+
+La demostración procede por inducción descendente sobre la profundidad del árbol: se demuestra primero la convergencia en las hojas (donde el bandit sí es i.i.d.), se propaga hacia los nodos internos usando que las estimaciones en los hijos convergen antes que las del padre, y se aplica la cota~\eqref{eq:regret-ucb1} en cada nivel. Los detalles técnicos, que involucran desigualdades de concentración de Chernoff--Hoeffding y el control de la varianza no estacionaria de las recompensas, se encuentran en la prueba original~\cite{kocsis2006}.
+
+% ----------------------------------------------------------------------------
+\subsection*{B.4\quad Relación con la presentación del cuerpo del informe}
+
+El punto~(1) del Teorema~\ref{teorema:kocsis} es el que permite aplicar el Corolario~\ref{cor:convergencia-estimador} (LLN) en §\ref{subsec:convergencia-uct}: $T(s_0, a) \to \infty$ garantiza que la sucesión de rollouts bajo cada acción es asintóticamente grande, y la LLN asegura que su media converge al valor esperado real. El punto~(3) cuantifica la probabilidad de error de decisión que, en el experimento de §\ref{sec:resultados}, se observa indirectamente a través de la estabilización de las curvas en la Figura~\ref{fig:convergencia-ucb}.
+
+La tasa $\mathcal{O}(\log n / n)$ del punto~(2) es ligeramente mejor que la cota $\mathcal{O}(n^{-1/2})$ del Teorema~\ref{teorema:error-mc} para el bandit plano (un solo nivel); la mejora se debe a que UCT concentra las muestras en las acciones prometedoras en lugar de distribuirlas uniformemente.

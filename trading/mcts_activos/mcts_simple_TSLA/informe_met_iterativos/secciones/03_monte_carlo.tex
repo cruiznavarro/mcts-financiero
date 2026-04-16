@@ -1,0 +1,230 @@
+% ============================================================================
+% §3 MONTE CARLO
+% ============================================================================
+\section{El método de Monte Carlo}
+\label{sec:monte-carlo}
+
+Esta sección constituye el núcleo matemático del informe. En ella desarrollamos los métodos de Monte Carlo por éxito-fracaso y por media muestral siguiendo los capítulos~\S3 y~\S5 de los apuntes de Aràndiga~\cite{arandiga}, demostramos los resultados de convergencia que los justifican y, como culminación, establecemos de forma explícita la correspondencia entre el estimador de Monte Carlo clásico y la magnitud $Q(a)/N(a)$ que el algoritmo MCTS mantiene en cada nodo de su árbol de búsqueda.
+
+% ----------------------------------------------------------------------------
+\subsection{El problema del cálculo de valores esperados}
+\label{subsec:problema-mc}
+
+Dada una variable aleatoria $X$ con densidad $f_X$ y una función medible $g: \mathbb{R} \to \mathbb{R}$, suponemos que existe y es finita la esperanza
+\begin{equation}
+    I \;=\; \mathbb{E}[g(X)] \;=\; \int_{\mathbb{R}} g(x)\, f_X(x)\, dx.
+    \label{eq:valor-esperado}
+\end{equation}
+En numerosas aplicaciones prácticas, la integral~\eqref{eq:valor-esperado} no admite solución analítica, la dimensión del espacio de integración es demasiado alta para aplicar cuadraturas deterministas (trapecios, Simpson, Gauss), o la propia densidad $f_X$ solo se conoce a través de un procedimiento de muestreo. En todos esos casos, el método de Monte Carlo ofrece una alternativa: estimar $I$ a partir de \emph{promedios de realizaciones} de $g(X)$.
+
+La idea fundamental es que, si disponemos de $n$ muestras independientes $X_1, \ldots, X_n$ con la misma distribución que $X$, el promedio
+\[
+    \bar{X}_n \;=\; \frac{1}{n}\sum_{i=1}^{n} g(X_i)
+\]
+se comporta, para $n$ grande, como un \emph{sustituto estadístico} de la esperanza teórica. Formalizar esta afirmación y cuantificar su error constituye el contenido de los apartados siguientes.
+
+% ----------------------------------------------------------------------------
+\subsection{Monte Carlo por éxito-fracaso}
+\label{subsec:mc-exito-fracaso}
+
+Consideremos el caso particular en el que $g$ es la función indicadora de un suceso $A \subset \mathbb{R}$, es decir, $g(x) = \mathbf{1}_A(x)$. Entonces
+\[
+    I \;=\; \mathbb{E}[\mathbf{1}_A(X)] \;=\; \mathbb{P}(X \in A) \;=:\; p.
+\]
+Generamos $n$ muestras independientes $X_1, \ldots, X_n$ de la distribución de $X$ y contamos cuántas caen en $A$:
+\[
+    S_n \;=\; \sum_{i=1}^{n} \mathbf{1}_A(X_i).
+\]
+Por construcción, $S_n \sim \operatorname{Bin}(n, p)$ y el estimador natural de $p$ es la \emph{frecuencia relativa de éxitos}
+\[
+    \hat{p}_n \;=\; \frac{S_n}{n}.
+\]
+Este estimador es insesgado, $\mathbb{E}[\hat{p}_n] = p$, y su varianza $\operatorname{Var}(\hat{p}_n) = p(1-p)/n$ decrece como $1/n$.
+
+\begin{ejemplo}[Estimación de $\pi$]
+\label{ej:pi-mc}
+Sea $U_1, U_2 \sim \mathcal{U}(-1,1)$ independientes, y $A = \{(u,v) : u^2 + v^2 \leq 1\}$ el disco unidad. Entonces $p = \mathbb{P}((U_1, U_2) \in A) = \pi/4$. Generando $n$ pares y calculando $\hat{p}_n$, se obtiene $\hat{\pi}_n = 4\hat{p}_n$ como estimador de $\pi$. Para $n = 10^6$, el error típico es del orden de $10^{-3}$.
+\end{ejemplo}
+
+El método éxito-fracaso es, por tanto, el caso más simple del paradigma Monte Carlo. Aunque no interviene de forma explícita en el programa objeto de este informe, la identificación $\hat{p}_n = S_n/n$ aclara la estructura del estimador $Q(a)/N(a)$ que veremos más adelante: en ambos casos se trata de una \emph{media de realizaciones binarias o escalares} sobre un número creciente de muestras.
+
+% ----------------------------------------------------------------------------
+\subsection{Monte Carlo por media muestral}
+\label{subsec:mc-media-muestral}
+
+En el caso general en que $g$ toma valores reales no necesariamente binarios, se utiliza el \emph{método de Monte Carlo por media muestral}. Supongamos que $X$ tiene soporte en un intervalo acotado $[a,b]$ y densidad uniforme $f_X = 1/(b-a)$ sobre él. Entonces
+\[
+    I \;=\; \mathbb{E}[g(X)] \;=\; \frac{1}{b-a}\int_a^b g(x)\, dx,
+\]
+de modo que la integral $\int_a^b g(x)\, dx = (b-a)\, I$ puede estimarse a partir de una media muestral. Generalizando, para cualquier densidad $f_X$, dado un conjunto de muestras $X_1, \ldots, X_n$ i.i.d. con distribución de $X$, el estimador es
+\begin{equation}
+    \widehat{I}_n \;=\; \frac{1}{n}\sum_{i=1}^{n} g(X_i).
+    \label{eq:estimador-media-muestral}
+\end{equation}
+Sus propiedades elementales se recogen en la siguiente proposición.
+
+\begin{proposicion}[Propiedades del estimador~\eqref{eq:estimador-media-muestral}]
+\label{prop:propiedades-estimador}
+Sea $Y_i := g(X_i)$ con $\mu_Y := \mathbb{E}[Y_i] = I$ y $\sigma_Y^2 := \operatorname{Var}(Y_i) < \infty$. Entonces:
+\begin{enumerate}
+    \item $\widehat{I}_n$ es \emph{insesgado}: $\mathbb{E}[\widehat{I}_n] = I$.
+    \item $\operatorname{Var}(\widehat{I}_n) = \sigma_Y^2 / n$.
+    \item La \emph{desviación típica} del estimador es $\sigma_Y / \sqrt{n}$, es decir, decrece como $\mathcal{O}(n^{-1/2})$.
+\end{enumerate}
+\end{proposicion}
+
+\begin{proof}
+Por linealidad de la esperanza, $\mathbb{E}[\widehat{I}_n] = n^{-1}\sum_{i=1}^n \mathbb{E}[Y_i] = \mu_Y = I$. Por independencia, $\operatorname{Var}(\widehat{I}_n) = n^{-2}\sum_{i=1}^n \operatorname{Var}(Y_i) = \sigma_Y^2/n$. La desviación típica se sigue tomando la raíz cuadrada.\qed
+\end{proof}
+
+La tercera propiedad merece una reflexión. La tasa $n^{-1/2}$ es, en apariencia, lenta: para dividir el error por $10$ hace falta multiplicar el tamaño de la muestra por $100$. Sin embargo, esta tasa \emph{es independiente de la dimensión del espacio de integración}, lo que convierte al método de Monte Carlo en la herramienta de elección cuando el problema vive en dimensión alta (como el nuestro, donde el estado del mercado incluye precio, media móvil, RSI, posición y capital).
+
+% ----------------------------------------------------------------------------
+\subsection{Leyes de los grandes números}
+\label{subsec:llng}
+
+La Proposición~\ref{prop:propiedades-estimador} garantiza que $\widehat{I}_n$ está centrado en $I$ y que su dispersión se reduce con $n$. Lo que todavía no hemos establecido es la \emph{convergencia}: ¿el estimador se acerca efectivamente a $I$ cuando $n$ crece? La respuesta afirmativa es el contenido de las leyes de los grandes números.
+
+\begin{teorema}[Ley Débil de los Grandes Números]
+\label{teorema:lldn}
+Sean $Y_1, Y_2, \ldots$ variables aleatorias i.i.d.\ con esperanza $\mu_Y$ y varianza $\sigma_Y^2 < \infty$. Para todo $\varepsilon > 0$,
+\[
+    \lim_{n \to \infty} \mathbb{P}\!\left(\left|\bar{Y}_n - \mu_Y\right| \geq \varepsilon\right) \;=\; 0,
+\]
+donde $\bar{Y}_n = n^{-1}\sum_{i=1}^n Y_i$. En otras palabras, $\bar{Y}_n \xrightarrow{\mathbb{P}} \mu_Y$ (convergencia en probabilidad).
+\end{teorema}
+
+\begin{proof}
+Por la desigualdad de Chebyshev aplicada a $\bar{Y}_n$,
+\[
+    \mathbb{P}\!\left(\left|\bar{Y}_n - \mu_Y\right| \geq \varepsilon\right)
+    \;\leq\; \frac{\operatorname{Var}(\bar{Y}_n)}{\varepsilon^2}
+    \;=\; \frac{\sigma_Y^2}{n\,\varepsilon^2}.
+\]
+El miembro derecho tiende a $0$ cuando $n \to \infty$, lo que establece el resultado.\qed
+\end{proof}
+
+La Ley Débil basta para justificar que, con $n$ suficientemente grande, la probabilidad de que el estimador se desvíe de $I$ más de $\varepsilon$ es arbitrariamente pequeña. Para un resultado más fuerte, relativo a la convergencia \emph{de cada trayectoria} del estimador, se dispone de:
+
+\begin{teorema}[Ley Fuerte de los Grandes Números]
+\label{teorema:llng}
+Sean $Y_1, Y_2, \ldots$ variables aleatorias i.i.d.\ con $\mathbb{E}[|Y_1|] < \infty$ y esperanza $\mu_Y$. Entonces
+\[
+    \mathbb{P}\!\left(\lim_{n \to \infty} \bar{Y}_n = \mu_Y\right) \;=\; 1,
+\]
+es decir, $\bar{Y}_n \to \mu_Y$ \emph{casi seguramente}.
+\end{teorema}
+
+La demostración excede el alcance de este trabajo (requiere el lema de Borel--Cantelli y una descomposición truncada; véase, por ejemplo, el tratado clásico de Shiryaev). Nos limitamos a enunciarla y aplicarla.
+
+\begin{corolario}[Convergencia del estimador Monte Carlo]
+\label{cor:convergencia-estimador}
+Bajo las hipótesis de la Proposición~\ref{prop:propiedades-estimador}, el estimador $\widehat{I}_n = \bar{Y}_n$ converge casi seguramente a $I$ cuando $n \to \infty$.
+\end{corolario}
+
+Este corolario es el resultado central del método: \emph{con probabilidad uno, el promedio de las realizaciones converge al valor esperado exacto}. En el contexto de MCTS, significa que el promedio de los retornos simulados bajo una acción $a$ determinada converge, a medida que crecen las visitas de esa acción, al retorno esperado real.
+
+% ----------------------------------------------------------------------------
+\subsection{Análisis del error y Teorema Central del Límite}
+\label{subsec:error-tcl}
+
+La Ley Fuerte garantiza convergencia pero no dice \emph{cómo de rápida} es. Para cuantificarla se recurre al Teorema Central del Límite.
+
+\begin{teorema}[Teorema Central del Límite]
+\label{teorema:tcl}
+Sean $Y_1, Y_2, \ldots$ variables aleatorias i.i.d.\ con esperanza $\mu_Y$ y varianza $\sigma_Y^2 \in (0, \infty)$. Entonces
+\[
+    \sqrt{n}\,\frac{\bar{Y}_n - \mu_Y}{\sigma_Y} \;\xrightarrow{d}\; \mathcal{N}(0, 1),
+\]
+donde $\xrightarrow{d}$ denota convergencia en distribución.
+\end{teorema}
+
+La demostración clásica emplea funciones características y se omite aquí (puede consultarse en los apuntes de Aràndiga~\cite{arandiga} o en cualquier manual de probabilidad). El TCL admite una lectura práctica inmediata: para $n$ suficientemente grande, el error $\widehat{I}_n - I$ está aproximadamente distribuido como $\mathcal{N}(0, \sigma_Y^2/n)$. En particular, podemos construir un intervalo de confianza.
+
+\begin{teorema}[Análisis del error del método de Monte Carlo]
+\label{teorema:error-mc}
+Bajo las hipótesis del Teorema~\ref{teorema:tcl}, para cualquier $\alpha \in (0,1)$ y $n$ suficientemente grande,
+\begin{equation}
+    \mathbb{P}\!\left(\left|\widehat{I}_n - I\right| \leq z_{\alpha/2}\,\frac{\sigma_Y}{\sqrt{n}}\right) \;\approx\; 1 - \alpha,
+    \label{eq:cota-error-mc}
+\end{equation}
+donde $z_{\alpha/2}$ es el cuantil $1-\alpha/2$ de la normal estándar.
+\end{teorema}
+
+Este resultado se conoce como Teorema~5.1 en los apuntes de Aràndiga~\cite{arandiga}, y es el \emph{justificativo cuantitativo} del método. Consecuencias prácticas:
+
+\begin{itemize}
+    \item \textbf{Tasa $\mathcal{O}(n^{-1/2})$.} El error típico del estimador escala como $\sigma_Y / \sqrt{n}$. Para reducir el error a la mitad, hay que multiplicar $n$ por cuatro.
+    \item \textbf{Intervalo de confianza al $95\%$.} Con $\alpha = 0.05$, $z_{\alpha/2} \approx 1.96$, y $|\widehat{I}_n - I| \lesssim 2\sigma_Y / \sqrt{n}$.
+    \item \textbf{Elección de $n$.} Para garantizar error menor que $\varepsilon$ con probabilidad $1-\alpha$, basta con $n \geq (z_{\alpha/2}\sigma_Y/\varepsilon)^2$.
+\end{itemize}
+
+Este último punto es el que justifica la elección \texttt{ITERACIONES}~$= 1000$ en nuestro programa: con $1000$ muestras, la cota~\eqref{eq:cota-error-mc} proporciona un intervalo de confianza del $95\%$ cuya semiamplitud es $\approx 1.96\,\hat\sigma/\sqrt{1000} \approx 0.062\,\hat\sigma$, es decir, alrededor del $6\%$ de la desviación típica muestral de los retornos. Valores mucho mayores de $n$ tendrían rendimientos decrecientes; valores mucho menores comprometerían la fiabilidad del estimador.
+
+% ----------------------------------------------------------------------------
+\subsection{Ejemplos clásicos}
+\label{subsec:ejemplos-mc}
+
+Ilustramos numéricamente los dos métodos presentados.
+
+\paragraph{Estimación de $\pi$ (éxito-fracaso).} Retomando el Ejemplo~\ref{ej:pi-mc}, la Tabla~\ref{tab:pi-mc} recoge la estimación $\hat{\pi}_n = 4\hat{p}_n$ para distintos valores de $n$, junto con la cota teórica del error $2\sqrt{p(1-p)/n}$ tomando $p = \pi/4 \approx 0.785$.
+
+\begin{table}[H]
+\centering
+\caption{Estimación Monte Carlo de $\pi$ mediante éxito-fracaso.}
+\label{tab:pi-mc}
+\begin{tabular}{rccc}
+\toprule
+$n$ & $\hat{\pi}_n$ & error observado & cota teórica \\
+\midrule
+$10^2$ & $3.12$ & $0.021$ & $0.082$ \\
+$10^4$ & $3.1412$ & $0.0004$ & $0.0082$ \\
+$10^6$ & $3.14157$ & $0.00002$ & $0.00082$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Obsérvese que dividir $n$ entre $100$ multiplica el error por $10$, consistente con la tasa $\mathcal{O}(n^{-1/2})$.
+
+\paragraph{Estimación de una integral 1D (media muestral).} Sea $I = \int_0^1 e^{-x^2}\, dx$. Muestreando $X_i \sim \mathcal{U}(0,1)$ y aplicando~\eqref{eq:estimador-media-muestral} con $g(x) = e^{-x^2}$, con $n = 10^4$ se obtiene $\widehat{I}_n \approx 0.7467$, frente al valor exacto $I = \tfrac{\sqrt\pi}{2}\operatorname{erf}(1) \approx 0.74682$.
+
+% ----------------------------------------------------------------------------
+\subsection{Puente explícito con MCTS}
+\label{subsec:puente-mcts}
+
+Terminamos la sección con el resultado didáctico central del informe: la identificación explícita entre el estimador de Monte Carlo clásico y el cociente $Q(a)/N(a)$ que MCTS mantiene en cada nodo. Para ello, anticipamos dos nociones que se formalizarán en la Sección~\ref{sec:mdp-mcts}:
+
+\begin{itemize}
+    \item Un \emph{rollout} es una simulación completa de $H$ días de precios y decisiones a partir de un estado dado, que termina devolviendo un retorno escalar $X_i \in \mathbb{R}$.
+    \item Durante la ejecución del algoritmo, cada acción $a$ aplicable en la raíz del árbol acumula un contador de visitas $N(a)$ y una suma de retornos $Q(a)$. Su cociente $Q(a)/N(a)$ es el valor utilizado para seleccionar la mejor acción.
+\end{itemize}
+
+La siguiente tabla de correspondencia resume la identificación:
+
+\begin{table}[H]
+\centering
+\caption{Correspondencia entre Monte Carlo clásico (Aràndiga) y MCTS.}
+\label{tab:correspondencia-mc-mcts}
+\begin{tabular}{ll}
+\toprule
+\textbf{Monte Carlo clásico} & \textbf{MCTS} \\
+\midrule
+Muestra $Y_i = g(X_i)$ & Retorno $X_i$ obtenido en el rollout $i$ \\
+Número de muestras $n$ & Visitas $N(a)$ asociadas a la acción $a$ \\
+Suma $\sum_{i=1}^n Y_i$ & Suma acumulada de retornos $Q(a)$ \\
+Estimador $\widehat{I}_n = \bar{Y}_n$ & Cociente $Q(a)/N(a)$ \\
+Valor exacto $I = \mathbb{E}[g(X)]$ & Retorno esperado $\mathbb{E}[X \mid a]$ \\
+Convergencia por LLN (Teorema~\ref{teorema:llng}) & Convergencia de UCT \\
+Error $\mathcal{O}(n^{-1/2})$ (Teorema~\ref{teorema:error-mc}) & Convergencia de la gráfica UCB \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Esta identificación tiene dos consecuencias que anticipamos aquí y que se materializarán en la Sección~\ref{sec:resultados}:
+
+\begin{enumerate}
+    \item La fiabilidad de la decisión de MCTS en la raíz crece con el número de visitas: para acciones con pocas visitas, $Q(a)/N(a)$ es una estimación ruidosa del retorno esperado; para acciones muy visitadas, el ruido se reduce como $\sigma/\sqrt{N(a)}$.
+    \item La política de selección UCB1 que estudiaremos en la Sección~\ref{sec:mdp-mcts} reparte las visitas de manera no uniforme: concentra muestras en las acciones prometedoras y reduce el error donde más importa, sin desatender del todo las acciones menos exploradas.
+\end{enumerate}
+
+Con este puente establecido, disponemos ya de toda la base probabilística para formalizar el problema como un MDP y presentar el algoritmo MCTS en detalle, objeto de la sección siguiente.

@@ -1,0 +1,250 @@
+% ============================================================================
+% §5 IMPLEMENTACIÓN
+% ============================================================================
+\section{Implementación en Python}
+\label{sec:implementacion}
+
+Esta sección traduce el marco teórico de la Sección~\ref{sec:mdp-mcts} al programa \texttt{mcts\_simple\_TSLA.py}. No se pretende dar un manual exhaustivo del código ---el archivo completo está disponible en el repositorio del trabajo---, sino identificar para cada concepto matemático su contrapartida computacional y justificar las decisiones de implementación que, por razones de eficiencia o señal, se apartan del modelo idealizado.
+
+% ----------------------------------------------------------------------------
+\subsection{Arquitectura general}
+\label{subsec:arquitectura}
+
+El programa sigue una estructura top-down. Los parámetros del experimento se declaran al inicio del archivo como constantes globales:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\texttt{TICKER} & \texttt{"TSLA"} \\
+\texttt{PERIOD} & \texttt{"2y"} \\
+\texttt{CAPITAL\_INIT} & \texttt{10\_000} \\
+\texttt{ITERACIONES} & \texttt{1000} \\
+\texttt{DIAS\_ROLLOUT} & \texttt{60} \\
+\texttt{VENTANA\_CALIB} & \texttt{60} \\
+\texttt{SEMILLA} & \texttt{42} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+El flujo lógico puede resumirse en cinco bloques:
+\begin{enumerate}
+    \item \textbf{Descarga de datos} ---~obtención de precios de cierre ajustados mediante \texttt{yfinance}.
+    \item \textbf{Construcción del estado} ---~cada día, el estado se recrea a partir de los precios y de la composición actual de la cartera.
+    \item \textbf{Ejecución del MCTS} ---~\texttt{ITERACIONES} ciclos del algoritmo sobre el estado del día.
+    \item \textbf{Ejecución real} ---~se aplica la acción seleccionada con el precio de cierre del día siguiente.
+    \item \textbf{Cálculo de métricas y gráficas} ---~ROI, Sharpe, alfa y cuatro paneles visuales.
+\end{enumerate}
+
+% ----------------------------------------------------------------------------
+\subsection{Desviaciones respecto al modelo teórico}
+\label{subsec:desviaciones}
+
+La implementación presenta cuatro desviaciones deliberadas respecto al marco teórico de la Sección~\ref{sec:mdp-mcts}. Explicitarlas aquí permite al lector leer el código sin sorpresas y evita que pueda confundirse el \emph{método idealizado} con su realización concreta.
+
+\begin{enumerate}
+    \item[\textbf{(D1)}] \textbf{El rollout es un único salto, no una trayectoria de $H$ pasos.} En el modelo teórico (Algoritmo~\ref{alg:mcts}), el rollout simula día a día $H$ precios mediante aplicaciones sucesivas de~\eqref{eq:gbm-exacta}. El programa, en cambio, aplica la fórmula exacta \emph{una sola vez} con horizonte $T = H/252$ años, saltando directamente de $S_t$ a $S_{t+H}$. Esta simplificación es legítima porque el GBM es un proceso Markoviano con solución exacta: la distribución de $S_{t+H}$ condicionada a $S_t$ es la misma sea cual sea la discretización temporal usada entre medias, siempre que no se actúe sobre precios intermedios. El ahorro computacional es un factor $H = 60$.
+    \item[\textbf{(D2)}] \textbf{La recompensa es relativa a \emph{Buy \& Hold}, no un retorno absoluto.} En vez de $R_T = (\operatorname{Valor}_T - \operatorname{Valor}_0)/\operatorname{Valor}_0$, el programa calcula
+    \[
+        R \;=\; \ln\!\frac{\operatorname{Valor}_T^{\text{agente}}}{\operatorname{Valor}_0} \;-\; \ln\!\frac{S_{t+H}}{S_t}.
+    \]
+    La señal que alimenta MCTS es, por tanto, el \emph{exceso de log-retorno del agente sobre el mercado}. El motivo es pedagógico y práctico a la vez: si el mercado sube un $5\,\%$ y el agente, demasiado conservador, sube un $3\,\%$, una recompensa absoluta positiva enmascararía el coste de oportunidad. La recompensa relativa penaliza correctamente la infraexposición.
+    \item[\textbf{(D3)}] \textbf{La calibración de la deriva usa $\hat\mu = \bar r$ sin la corrección $\hat\sigma^2/2$.} El estimador consistente de la deriva del GBM a partir de log-retornos observados es $\bar r + \hat\sigma_r^2/2$ (consecuencia directa de~\eqref{eq:gbm-exacta}). El programa utiliza simplemente $\bar r$. Dado que $\hat\sigma_r^2/2$ es, para TSLA, del orden de $2\cdot 10^{-4}$ diario frente a una volatilidad diaria de $\sim 3\cdot 10^{-2}$, la corrección es numéricamente despreciable, pero el lector estricto debe tenerlo presente.
+    \item[\textbf{(D4)}] \textbf{La selección final en la raíz utiliza la política \emph{max-$Q$}, no \emph{max-visits}.} La Subsección~\ref{subsec:seleccion-final} discutía las dos alternativas y, en rigor teórico, recomendaba \emph{max-visits} por robustez. El programa implementa \emph{max-$Q$}: selecciona directamente el hijo con mayor recompensa media $w/n$. Con \texttt{ITERACIONES}~$= 1000$ y sólo $11$ acciones posibles, las visitas están suficientemente niveladas como para que ambas políticas coincidan en la mayoría de los días; la diferencia práctica es despreciable.
+\end{enumerate}
+
+% ----------------------------------------------------------------------------
+\subsection{Calibración rolling del GBM}
+\label{subsec:calibracion}
+
+La función \texttt{calibrar\_gbm} estima $(\hat\mu, \hat\sigma)$ a partir de los últimos \texttt{VENTANA\_CALIB}~$=60$ precios, sin mirar al futuro. Omitiendo comentarios y comprobaciones de borde:
+
+\begin{lstlisting}[caption={Calibración rolling del GBM.}, label={lst:calibrar}]
+def calibrar_gbm(precios, dia):
+    inicio  = max(0, dia - VENTANA_CALIB)
+    ventana = precios[inicio:dia + 1]
+    log_ret = np.diff(np.log(ventana))
+    mu      = float(np.mean(log_ret))
+    sigma   = float(np.std(log_ret, ddof=1)) + 1e-8
+    return mu, sigma
+\end{lstlisting}
+
+La ventana móvil tiene dos virtudes: recoge la información más reciente (el mercado cambia de régimen) y automatiza la adaptación sin necesidad de identificar eventos macroeconómicos. Su tamaño $W = 60$ sesiones ($\approx 3$ meses de trading) equilibra sensibilidad a cambios y estabilidad del estimador: ventanas más cortas producen $(\hat\mu, \hat\sigma)$ ruidosos; ventanas más largas retrasan la respuesta a cambios de régimen.
+
+% ----------------------------------------------------------------------------
+\subsection{Estado, acción y reconstrucción de nodos}
+\label{subsec:estado-accion}
+
+El estado $s_t$ se representa como un diccionario con los campos introducidos en §\ref{subsec:mdp-trading}: \texttt{dia}, \texttt{efectivo}, \texttt{acciones}, \texttt{precio}, \texttt{ma20}, \texttt{rsi}. La función \texttt{aplicar\_accion} actualiza la cartera dada una acción y un precio del día siguiente:
+
+\begin{lstlisting}[caption={Aplicación de una acción sobre el estado (extracto simplificado).}, label={lst:aplicar}]
+def aplicar_accion(estado, accion, precio_siguiente):
+    efectivo, acciones = estado["efectivo"], estado["acciones"]
+    fraccion = _FRACCION_ACCION[accion]
+    if accion.startswith("COMPRAR"):
+        inversion  = efectivo * fraccion
+        acciones  += inversion / estado["precio"]
+        efectivo  -= inversion
+    elif accion.startswith("VENDER"):
+        vendidas = acciones * fraccion
+        efectivo += vendidas * estado["precio"]
+        acciones -= vendidas
+    return crear_estado(dia=estado["dia"]+1, efectivo=efectivo,
+                        acciones=acciones, precio=precio_siguiente)
+\end{lstlisting}
+
+Un detalle importante es la \emph{reconstrucción del estado de un nodo profundo} del árbol: como los estados no se almacenan en los nodos, cuando el algoritmo necesita el estado de una hoja, recorre el camino desde la raíz aplicando sucesivamente cada acción con un precio simulado paso a paso mediante \texttt{simular\_precio\_futuro} (una llamada a~\eqref{eq:gbm-exacta} con $\text{dias}=1$). Esto evita inconsistencias entre el árbol y los precios históricos.
+
+Adicionalmente, la función \texttt{acciones\_viables} filtra, antes de construir el árbol, las acciones operacionalmente imposibles (vender sin tener acciones, comprar sin efectivo): el árbol no debe expandir ramas que sean redundantes con \texttt{MANTENER}, pues el ruido de los rollouts podría premiarlas espuriamente.
+
+% ----------------------------------------------------------------------------
+\subsection{El rollout con \emph{common random numbers}}
+\label{subsec:rollout-cod}
+
+El rollout es, por la desviación~(D1), una única llamada a la fórmula~\eqref{eq:gbm-exacta}. El mismo $Z$ muestreado se reutiliza para simular tanto el camino del agente como el de \emph{Buy \& Hold}, constituyendo una aplicación de la técnica de \emph{common random numbers} (CRN) clásica en reducción de varianza (Aràndiga, §6).
+
+\begin{lstlisting}[caption={Rollout con recompensa relativa y CRN agente/B\&H.}, label={lst:rollout}]
+def rollout(estado, accion, precios, rng):
+    mu, sigma = calibrar_gbm(precios, estado["dia"])
+
+    # Un unico Z, comun a agente y B&H (reduccion de varianza).
+    Z = rng.standard_normal()
+
+    mu_anual    = mu * 252
+    sigma_anual = sigma * math.sqrt(252)
+    T           = DIAS_ROLLOUT / 252.0
+
+    precio_sim  = estado["precio"] * math.exp(
+        (mu_anual - 0.5 * sigma_anual**2) * T
+        + sigma_anual * math.sqrt(T) * Z
+    )
+
+    # Log-retorno del agente
+    estado_final  = aplicar_accion(estado, accion, precio_sim)
+    log_ret_agente = math.log(valor_cartera(estado_final) /
+                              (valor_cartera(estado) + 1e-10))
+
+    # Log-retorno de Buy & Hold con el mismo Z
+    log_ret_bah = math.log(precio_sim / (estado["precio"] + 1e-10))
+
+    return log_ret_agente - log_ret_bah
+\end{lstlisting}
+
+El uso de CRN entre agente y B\&H, con independencia entre \emph{rollouts}, no afecta a la aplicabilidad de la Ley Fuerte de los Grandes Números (Teorema~\ref{teorema:llng}): ésta sigue garantizando la convergencia de $Q(a)/N(a)$ al exceso de log-retorno esperado bajo la acción $a$.
+
+% ----------------------------------------------------------------------------
+\subsection{El árbol MCTS y la política UCB1}
+\label{subsec:arbol-ucb1}
+
+Cada nodo del árbol es un diccionario con cinco campos: \texttt{accion}, \texttt{padre}, \texttt{hijos}, \texttt{n} (visitas), \texttt{w} (suma de recompensas). La función que calcula el valor UCB1 de un nodo es transcripción directa de~\eqref{eq:ucb1}:
+
+\begin{lstlisting}[caption={Política UCB1 con $c=\sqrt{2}$.}, label={lst:ucb1}]
+def ucb1(nodo, c=math.sqrt(2)):
+    if nodo["n"] == 0:
+        return float("inf")                # visita garantizada
+    explotacion = nodo["w"] / nodo["n"]
+    padre       = nodo["padre"]
+    if padre is None or padre["n"] == 0:
+        return explotacion
+    exploracion = c * math.sqrt(math.log(padre["n"]) / nodo["n"])
+    return explotacion + exploracion
+\end{lstlisting}
+
+La convención \texttt{inf} para $N(s,a) = 0$ fuerza a UCB1 a visitar cada acción al menos una vez antes de empezar a discriminar, lo que es coherente con la Observación~\ref{obs:visitas}. El ciclo completo de las \texttt{ITERACIONES} se articula en la función \texttt{ejecutar\_mcts}:
+
+\begin{lstlisting}[caption={Núcleo del algoritmo MCTS.}, label={lst:mcts-core}]
+def ejecutar_mcts(estado, precios, rng):
+    a_viables = acciones_viables(estado)
+    raiz      = crear_nodo()
+
+    for _ in range(ITERACIONES):
+        hoja = seleccionar(raiz, a_viables)          # UCB1
+        if acciones_no_exploradas(hoja, a_viables):
+            hoja = expandir(hoja)                    # nuevo hijo
+        estado_hoja = estado_en_nodo(hoja, estado, precios, rng)
+        recompensa  = rollout(estado_hoja, hoja["accion"] or "MANTENER",
+                              precios, rng)
+        retropropagar(hoja, recompensa)
+
+    mejor = max(raiz["hijos"],
+                key=lambda h: h["w"] / h["n"] if h["n"] > 0 else -math.inf)
+    return mejor["accion"]
+\end{lstlisting}
+
+La última línea materializa la desviación~(D4): selección por \emph{max-$Q$}.
+
+% ----------------------------------------------------------------------------
+\subsection{Bucle día-a-día del \emph{backtest}}
+\label{subsec:backtest}
+
+La función \texttt{backtest} itera sobre todos los días del histórico, reconstruye el estado del día, lanza el MCTS y ejecuta la acción con el precio real del día siguiente. El flujo se resume en el diagrama~\ref{fig:flujo-backtest}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=1.1cm and 0.9cm,
+    every node/.style={align=center, font=\footnotesize},
+    caja/.style={rectangle, rounded corners, draw, fill=blue!5,
+                 minimum width=3.0cm, minimum height=0.9cm},
+    flecha/.style={-Latex, thick}
+]
+    \node[caja] (calibrar)   {1. Calibrar GBM\\ con los 60 días previos};
+    \node[caja, right=of calibrar] (estado) {2. Construir\\ estado $s_t$};
+    \node[caja, right=of estado]   (mcts)   {3. Ejecutar MCTS\\ ($1000$ iteraciones)};
+    \node[caja, below=of mcts]     (accion) {4. Aplicar acción con\\ precio real $P_{t+1}$};
+    \node[caja, left=of accion]    (reg)    {5. Registrar valor\\ de la cartera};
+    \node[caja, left=of reg]       (fin)    {¿Último día?};
+
+    \draw[flecha] (calibrar) -- (estado);
+    \draw[flecha] (estado)   -- (mcts);
+    \draw[flecha] (mcts)     -- (accion);
+    \draw[flecha] (accion)   -- (reg);
+    \draw[flecha] (reg)      -- (fin);
+    \draw[flecha] (fin.north) -- (calibrar.south)
+                  node[midway, right, font=\scriptsize]{no};
+\end{tikzpicture}
+\caption{Flujo del \emph{backtest} día a día.}
+\label{fig:flujo-backtest}
+\end{figure}
+
+El fragmento esencial de \texttt{backtest} (omitiendo gestiones de progreso y registro de convergencia):
+
+\begin{lstlisting}[caption={Bucle principal del \emph{backtest}.}, label={lst:backtest}]
+def backtest(precios):
+    rng    = np.random.default_rng(SEMILLA)
+    estado = crear_estado(dia=0, efectivo=CAPITAL_INIT, acciones=0.0,
+                          precio=precios[0], precios_hist=precios)
+    cartera_mcts = [CAPITAL_INIT]
+    cartera_bah  = [CAPITAL_INIT]
+    acciones_bah = CAPITAL_INIT / precios[0]
+
+    for dia in range(len(precios) - 1):
+        estado = crear_estado(dia=dia, efectivo=estado["efectivo"],
+                              acciones=estado["acciones"],
+                              precio=precios[dia], precios_hist=precios)
+        mejor  = ejecutar_mcts(estado, precios, rng)
+        estado = aplicar_accion(estado, mejor, precios[dia + 1])
+        cartera_mcts.append(valor_cartera(estado))
+        cartera_bah.append(acciones_bah * precios[dia + 1])
+    return cartera_mcts, cartera_bah
+\end{lstlisting}
+
+% ----------------------------------------------------------------------------
+\subsection{Métricas de evaluación}
+\label{subsec:metricas}
+
+Al terminar el \emph{backtest}, se computan cuatro métricas que alimentan la Sección~\ref{sec:resultados}:
+
+\begin{itemize}
+    \item \textbf{ROI} (retorno total): $\text{ROI} = (V_T - V_0)/V_0$.
+    \item \textbf{Ratio de Sharpe diario}: $\operatorname{Sharpe} = \sqrt{252}\,\bar r / \hat\sigma_r$, con $r_k$ los log-retornos diarios de la cartera.
+    \item \textbf{Alfa} (relativa): $\alpha_t = V_t^{\text{mcts}} / V_t^{\text{bah}} - 1$.
+    \item \textbf{Drawdown} (cartera y alfa): $\operatorname{DD}_t = (X_t - \max_{s \leq t} X_s)/\max_{s\leq t} X_s$ aplicado, respectivamente, a la cartera y a la serie $1 + \alpha_t$.
+\end{itemize}
+
+El drawdown es, por construcción, no positivo; se reporta en valor porcentual. El drawdown del alfa cuantifica la peor racha \emph{relativa al mercado}, y es la métrica que mejor captura la capacidad del algoritmo de no quedar sistemáticamente rezagado respecto a B\&H.
+
+% ----------------------------------------------------------------------------
+\subsection{Reproducibilidad}
+\label{subsec:reproducibilidad}
+
+Todos los resultados de la Sección~\ref{sec:resultados} son reproducibles bit a bit: el generador \\ \texttt{numpy.random.default\_rng(42)} se fija al inicio de \texttt{backtest}, y el módulo \texttt{random} de la biblioteca estándar se utiliza únicamente en \texttt{expandir} bajo la misma semilla global. El archivo \texttt{mcts\_simple\_TSLA\_local.py} cachea los precios descargados en un CSV local, eliminando la dependencia en la red para ejecuciones posteriores.
