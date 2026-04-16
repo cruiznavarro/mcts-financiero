@@ -17,6 +17,7 @@ Dependencias: numpy, matplotlib, yfinance
 """
 
 import math
+import os
 import random
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,6 +27,8 @@ import yfinance as yf
 import requests
 import json
 
+# Directorio del propio script — todos los archivos generados se guardan aquí
+DIR = os.path.dirname(os.path.abspath(__file__))
 
 # =============================================================================
 # PARÁMETROS GLOBALES
@@ -1071,7 +1074,7 @@ def graficar(precios: np.ndarray, cartera_mcts: list,
     ax4.legend(fontsize=9)
     ax4.grid(alpha=0.25)
 
-    plt.savefig("mcts_simple_resultado.png", dpi=150, bbox_inches="tight")
+    plt.savefig(os.path.join(DIR, "mcts_simple_resultado.png"), dpi=150, bbox_inches="tight")
     plt.close()
     print("[OK] Fig 1 guardada: mcts_simple_resultado.png")
 
@@ -1148,7 +1151,7 @@ def graficar_convergencia_ucb(ucb_historial: dict) -> None:
     ax.grid(alpha=0.25)
 
     plt.tight_layout()
-    plt.savefig("mcts_convergencia_ucb.png", dpi=150, bbox_inches="tight")
+    plt.savefig(os.path.join(DIR, "mcts_convergencia_ucb.png"), dpi=150, bbox_inches="tight")
     plt.close()
     print("[OK] Fig 2 guardada: mcts_convergencia_ucb.png")
 
@@ -1248,7 +1251,7 @@ def graficar_violin_retornos(cartera_mcts: list,
              bbox=dict(boxstyle="round", facecolor="#fde8cc", alpha=0.8))
 
     plt.tight_layout()
-    plt.savefig("mcts_violin_retornos.png", dpi=150, bbox_inches="tight")
+    plt.savefig(os.path.join(DIR, "mcts_violin_retornos.png"), dpi=150, bbox_inches="tight")
     plt.close()
     print("[OK] Fig 3 guardada: mcts_violin_retornos.png")
 
@@ -1346,7 +1349,7 @@ def graficar_exposicion_dinamica(precios: np.ndarray,
              f"Media: {media_exp:.1f}%", fontsize=8, color="#1a5276")
 
     plt.tight_layout()
-    plt.savefig("mcts_exposicion_dinamica.png", dpi=150, bbox_inches="tight")
+    plt.savefig(os.path.join(DIR, "mcts_exposicion_dinamica.png"), dpi=150, bbox_inches="tight")
     plt.close()
     print("[OK] Fig 4 guardada: mcts_exposicion_dinamica.png")
 
@@ -1387,13 +1390,76 @@ if __name__ == "__main__":
     graficar_violin_retornos(cartera_mcts, cartera_bah)
     graficar_exposicion_dinamica(precios, cartera_mcts, acciones, ratios_pos)
 
+    # ── 9. Guardar datos de las gráficas ──────────────────────────────────────
+    import csv
+    DATOS_DIR = os.path.join(DIR, "datos_graficos")
+    os.makedirs(DATOS_DIR, exist_ok=True)
+    print("\n[INFO] Guardando datos de las gráficas...")
+
+    arr_mcts  = np.array(cartera_mcts)
+    arr_bah   = np.array(cartera_bah)
+    pv_norm   = arr_mcts / arr_mcts[0] * 100
+    bah_norm  = arr_bah  / arr_bah[0]  * 100
+    alfa_pct  = (arr_mcts / arr_bah - 1) * 100
+    pico_pv   = np.maximum.accumulate(arr_mcts)
+    dd_mcts   = (arr_mcts - pico_pv) / pico_pv * 100
+    pico_alfa = np.maximum.accumulate(arr_mcts / arr_bah)
+    dd_alfa   = (arr_mcts / arr_bah - pico_alfa) / pico_alfa * 100
+
+    with open(os.path.join(DATOS_DIR, "datos_resultado.csv"), "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["dia", "precio", "cartera_mcts_base100", "cartera_bah_base100",
+                    "alfa_pct", "drawdown_mcts_pct", "drawdown_alfa_pct", "accion"])
+        for i in range(len(precios)):
+            w.writerow([
+                i,
+                round(float(precios[i]),   4),
+                round(float(pv_norm[i]),   4),
+                round(float(bah_norm[i]),  4),
+                round(float(alfa_pct[i]),  4),
+                round(float(dd_mcts[i]),   4),
+                round(float(dd_alfa[i]),   4),
+                acciones[i - 1] if i > 0 else "",
+            ])
+    print(f"[OK] Datos Fig 1: {os.path.join(DATOS_DIR, 'datos_resultado.csv')}")
+
+    if ucb_hist:
+        acciones_ucb = list(ucb_hist.keys())
+        max_iter = max(len(v) for v in ucb_hist.values())
+        with open(os.path.join(DATOS_DIR, "datos_convergencia_ucb.csv"), "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["iteracion"] + acciones_ucb)
+            for i in range(max_iter):
+                row = [i + 1] + [
+                    round(ucb_hist[a][i], 6) if i < len(ucb_hist[a]) else ""
+                    for a in acciones_ucb
+                ]
+                w.writerow(row)
+        print(f"[OK] Datos Fig 2: {os.path.join(DATOS_DIR, 'datos_convergencia_ucb.csv')}")
+
+    ret_mcts = np.diff(arr_mcts) / arr_mcts[:-1] * 100
+    ret_bah  = np.diff(arr_bah)  / arr_bah[:-1]  * 100
+    with open(os.path.join(DATOS_DIR, "datos_violin_retornos.csv"), "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["dia", "retorno_mcts_pct", "retorno_bah_pct"])
+        for i in range(len(ret_mcts)):
+            w.writerow([i + 1, round(float(ret_mcts[i]), 6), round(float(ret_bah[i]), 6)])
+    print(f"[OK] Datos Fig 3: {os.path.join(DATOS_DIR, 'datos_violin_retornos.csv')}")
+
+    with open(os.path.join(DATOS_DIR, "datos_exposicion_dinamica.csv"), "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["dia", "precio", "accion", "exposicion_pct"])
+        for i in range(len(acciones)):
+            w.writerow([i, round(float(precios[i]), 4), acciones[i], round(ratios_pos[i] * 100, 2)])
+    print(f"[OK] Datos Fig 4: {os.path.join(DATOS_DIR, 'datos_exposicion_dinamica.csv')}")
+
     # Abrir los 4 PNG con Preview (macOS) de una sola vez
     import subprocess
     archivos = [
-        "mcts_simple_resultado.png",
-        "mcts_convergencia_ucb.png",
-        "mcts_violin_retornos.png",
-        "mcts_exposicion_dinamica.png",
+        os.path.join(DIR, "mcts_simple_resultado.png"),
+        os.path.join(DIR, "mcts_convergencia_ucb.png"),
+        os.path.join(DIR, "mcts_violin_retornos.png"),
+        os.path.join(DIR, "mcts_exposicion_dinamica.png"),
     ]
     print("\n[INFO] Abriendo los 4 graficos en Preview...")
     subprocess.Popen(["open"] + archivos)

@@ -319,12 +319,40 @@ def decision_hoy(efectivo: float, num_acciones: float) -> None:
     graficar_convergencia_ucb(historial)
     _graficar_ranking(ranking, accion)
 
+    # ── 8. Guardar datos de las gráficas ──────────────────────────────────────
+    import csv
+    DATOS_DIR = os.path.join(_DIR, "datos_graficos")
+    os.makedirs(DATOS_DIR, exist_ok=True)
+
+    # datos_ranking_acciones.csv — Q(a)/N(a) final de cada acción
+    with open(os.path.join(DATOS_DIR, "datos_ranking_acciones.csv"), "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["accion", "q_sobre_n", "elegida"])
+        for a_r, v_r in ranking:
+            w.writerow([a_r, round(v_r, 6), "si" if a_r == accion else "no"])
+    print(f"[OK] Datos ranking: {os.path.join(DATOS_DIR, 'datos_ranking_acciones.csv')}")
+
+    # datos_convergencia_ucb.csv — evolución Q(a)/N(a) por iteración
+    if historial:
+        acciones_ucb = list(historial.keys())
+        max_iter = max(len(v) for v in historial.values())
+        with open(os.path.join(DATOS_DIR, "datos_convergencia_ucb.csv"), "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["iteracion"] + acciones_ucb)
+            for i in range(max_iter):
+                row = [i + 1] + [
+                    round(historial[a_u][i], 6) if i < len(historial[a_u]) else ""
+                    for a_u in acciones_ucb
+                ]
+                w.writerow(row)
+        print(f"[OK] Datos convergencia: {os.path.join(DATOS_DIR, 'datos_convergencia_ucb.csv')}")
+
     # Abrir imágenes solo en ejecución interactiva (no en launchd/cron)
     if sys.stdout.isatty():
         import subprocess
         subprocess.Popen(["open",
-                          "mcts_convergencia_hoy.png",
-                          "mcts_ranking_acciones.png"])
+                          os.path.join(_DIR, "mcts_convergencia_hoy.png"),
+                          os.path.join(_DIR, "mcts_ranking_acciones.png")])
 
 
 # =============================================================================
@@ -426,9 +454,9 @@ def _graficar_ranking(ranking: list, accion_elegida: str) -> None:
     ax.invert_yaxis()
     ax.grid(axis="x", alpha=0.25)
     plt.tight_layout()
-    plt.savefig("mcts_ranking_acciones.png", dpi=150, bbox_inches="tight")
+    plt.savefig(os.path.join(_DIR, "mcts_ranking_acciones.png"), dpi=150, bbox_inches="tight")
     plt.close()
-    print("[OK] Gráfico ranking guardado: mcts_ranking_acciones.png")
+    print(f"[OK] Gráfico ranking guardado: {os.path.join(_DIR, 'mcts_ranking_acciones.png')}")
 
 
 # =============================================================================
