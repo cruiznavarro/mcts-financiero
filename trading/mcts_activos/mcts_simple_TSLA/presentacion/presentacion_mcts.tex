@@ -705,20 +705,20 @@ def retropropagar(nodo, recompensa):
 % ---------------------------------------------------------------------------
 \begin{frame}{Decisiones de diseño relevantes}
   \small
-  \begin{block}{Recompensa relativa vs.\ absoluta}
-    Recompensa $=$ exceso de log-retorno del agente sobre B\&H.
-    Si mercado sube $5\%$ y agente sube $3\%$, recompensa $= -2\%$:
-    penaliza estar poco invertido en mercado alcista.
-  \end{block}
-
-  \vspace{0.08cm}
-  \begin{block}{Filtro de acciones viables (\texttt{acciones\_viables})}
-    Sin efectivo $\to$ excluye COMPRAR; sin acciones $\to$ excluye VENDER.
-    Evita que VENDER con posición vacía compita con MANTENER y sea
-    coronada erróneamente por el ruido de los rollouts.
-  \end{block}
-
-  \vspace{0.08cm}
+%  \begin{block}{Recompensa relativa vs.\ absoluta}
+%    Recompensa $=$ exceso de log-retorno del agente sobre B\&H.
+%    Si mercado sube $5\%$ y agente sube $3\%$, recompensa $= -2\%$:
+%    penaliza estar poco invertido en mercado alcista.
+%  \end{block}
+%
+%  \vspace{0.08cm}
+%  \begin{block}{Filtro de acciones viables (\texttt{acciones\_viables})}
+%    Sin efectivo $\to$ excluye COMPRAR; sin acciones $\to$ excluye VENDER.
+%    Evita que VENDER con posición vacía compita con MANTENER y sea
+%    coronada erróneamente por el ruido de los rollouts.
+%  \end{block}
+%
+%  \vspace{0.08cm}
   \begin{block}{\emph{Common Random Numbers} en el rollout}
     Agente y B\&H usan el \textbf{mismo} $Z\sim\mathcal{N}(0,1)$:
     misma trayectoria de mercado, solo cambia la decisión.
