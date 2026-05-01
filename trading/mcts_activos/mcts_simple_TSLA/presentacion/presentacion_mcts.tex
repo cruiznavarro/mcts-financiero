@@ -1,0 +1,1104 @@
+% ============================================================================
+%  Presentación Beamer — Monte Carlo Tree Search aplicado a TSLA
+%  Asignatura: Métodos Numéricos · Universitat de València
+%  Autor: Carlos Ruiz Navarro
+% ============================================================================
+\documentclass[aspectratio=169, 10pt]{beamer}
+
+% ----------------------------------------------------------------------------
+% TEMA Y COLORES
+% ----------------------------------------------------------------------------
+\usetheme{Madrid}
+\usecolortheme{whale}
+
+\definecolor{uvblue}{RGB}{0,94,184}
+\definecolor{uvgold}{RGB}{204,153,0}
+\setbeamercolor{structure}{fg=uvblue}
+\setbeamercolor{palette primary}{bg=uvblue, fg=white}
+\setbeamercolor{palette secondary}{bg=uvblue!80, fg=white}
+\setbeamercolor{palette tertiary}{bg=uvblue!60, fg=white}
+\setbeamercolor{frametitle}{bg=uvblue, fg=white}
+\setbeamercolor{block title}{bg=uvblue!80, fg=white}
+\setbeamercolor{block title example}{bg=teal!70, fg=white}
+\setbeamercolor{block title alerted}{bg=red!70!black, fg=white}
+\setbeamertemplate{blocks}[rounded][shadow=false]
+\setbeamertemplate{navigation symbols}{}
+\hypersetup{hidelinks}
+
+
+
+% ----------------------------------------------------------------------------
+% PAQUETES
+% ----------------------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit,
+                backgrounds, decorations.pathreplacing, calc}
+\usepackage{comment}
+
+% ----------------------------------------------------------------------------
+% RUTA DE FIGURAS
+% ----------------------------------------------------------------------------
+\graphicspath{
+  {/Users/carlosruiznavarro/MonteCarlo/mcts/trading/mcts_activos/mcts_simple_TSLA/figuras_individuales/}
+  {/Users/carlosruiznavarro/MonteCarlo/mcts/trading/mcts_activos/mcts_simple_TSLA/informe_met_iterativos/figuras/}
+}
+
+% ----------------------------------------------------------------------------
+% ESTILO DE CÓDIGO PYTHON
+% ----------------------------------------------------------------------------
+\definecolor{codegris}{rgb}{0.93,0.93,0.93}
+\definecolor{codeazul}{rgb}{0,0,0.65}
+\definecolor{codeverde}{rgb}{0,0.45,0}
+\definecolor{codemorado}{rgb}{0.45,0,0.45}
+
+\lstset{
+  language=Python,
+  backgroundcolor=\color{codegris},
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{codeazul}\bfseries,
+  commentstyle=\color{codeverde}\itshape,
+  stringstyle=\color{codemorado},
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{gray!40},
+  tabsize=4,
+  numberstyle=\tiny\color{gray},
+}
+
+% ----------------------------------------------------------------------------
+% COLORES DE ACCIONES (usados en TikZ)
+% ----------------------------------------------------------------------------
+\definecolor{mctsBlue}{RGB}{41,128,185}
+\definecolor{mctsGreen}{RGB}{39,174,96}
+\definecolor{mctsRed}{RGB}{192,57,43}
+\definecolor{mctsOrange}{RGB}{230,126,34}
+\definecolor{mctsPurple}{RGB}{142,68,173}
+\definecolor{mctsDkGreen}{RGB}{13,79,13}
+
+% ----------------------------------------------------------------------------
+% PORTADA
+% ----------------------------------------------------------------------------
+\title[MCTS Financiero]{%
+  Monte Carlo Tree Search\\
+  aplicado a decisiones de inversión financiera}
+\subtitle{Un estudio sobre el activo TSLA}
+\author{Héctor Orosa, Sofía Ortiz, Carlos Ruiz}
+\institute{%
+  Universitdad de Valencia\\
+  Métodos Numéricos}
+\date{\today}
+
+% hyperref ya cargado por Beamer — solo ajustamos opciones (recuadros, sin color)
+\hypersetup{colorlinks=false, pdfborder={0 0 1}}
+
+% ============================================================================
+\begin{document}
+% ============================================================================
+
+% --- Portada ----------------------------------------------------------------
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% --- Índice -----------------------------------------------------------------
+\begin{frame}{Contenido}
+  \tableofcontents
+\end{frame}
+
+% ============================================================================
+\section{Introducción y objetivos}
+% ============================================================================
+
+\begin{frame}{Motivación}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \begin{block}{El problema}
+        Cada sesión bursátil un inversor decide \textbf{comprar, vender o
+        mantener} un activo disponiendo únicamente de información histórica
+        y una estimación del futuro.
+      \end{block}
+      \vspace{0.4cm}
+      Este es un \textbf{proceso de decisión secuencial bajo incertidumbre}:
+      \begin{itemize}
+        \item El estado futuro es desconocido.
+        \item Se pueden asignar \emph{probabilidades} a sus evoluciones.
+        \item Se busca \emph{maximizar el valor esperado} de un objetivo.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \begin{alertblock}{Pregunta guía}
+        ¿Existe una política $\pi:\mathcal{S}\to\mathcal{A}$ que obtenga
+        sistemáticamente un retorno superior al de la estrategia pasiva
+        \emph{Buy \& Hold}?
+      \end{alertblock}
+      \vspace{0.3cm}
+      \begin{exampleblock}{Herramientas}
+        \begin{itemize}
+          \item Variables aleatorias
+          \item Simulación estocástica
+          \item Estimación por media muestral
+        \end{itemize}
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Conexión con el Monte Carlo clásico}
+  \begin{block}{Idea central}
+    El MCTS es una \textbf{\textcolor{orange}{aplicación directa}} del estimador de Monte Carlo por media muestral.
+  \end{block}
+
+  \vspace{0.4cm}
+  Si $X_i$ es el retorno al simular una trayectoria de precios durante $H$
+  días tomando la acción $a$, repitiéndolo $n$ veces de forma independiente:
+
+  \[
+    \widehat{I}_n = \frac{1}{n}\sum_{i=1}^{n} X_i
+    \;\xrightarrow{\ \text{c.s.}\ }\;
+    \mathbb{E}[X \mid a]
+    \qquad (n\to\infty) 
+  \]
+  por la \textbf{Ley Fuerte de los Grandes Números}.
+
+  \vspace{0.4cm}
+  \begin{alertblock}{}
+  En cada nodo del MCTS:
+  \begin{equation*}
+  \frac{Q(a)}{N(a)}\Leftrightarrow \widehat{I}_n
+  \end{equation*}
+    aplicado a los rollouts ejecutados hasta ese momento.
+  \end{alertblock}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Objetivos del trabajo}
+  \begin{enumerate}
+    \item[\textbf{O1}] \textbf{Formalizar} el problema de trading como un
+      Proceso de Decisión de Markov (MDP) con espacio de acciones discreto.
+    \vspace{0.15cm}
+    \item[\textbf{O2}] \textbf{Implementar} el algoritmo MCTS con política UCB1
+      y rollouts generados mediante Movimiento Browniano Geométrico (GBM)
+      calibrado sobre ventana móvil.
+    \vspace{0.15cm}
+    \item[\textbf{O3}] \textbf{Demostrar} que la convergencia se apoya en la
+      LLN y en la cota de error $\mathcal{O}(n^{-1/2})$.
+    \vspace{0.15cm}
+    \item[\textbf{O4}] \textbf{Comparar} MCTS con Buy \& Hold mediante ROI,
+      Sharpe, alfa y drawdown.
+    \vspace{0.15cm}
+    \item[\textbf{O5}] \textbf{Validar} experimentalmente la cota
+      $\mathcal{O}(n^{-1/2})$ observando la convergencia del árbol.
+  \end{enumerate}
+\end{frame}
+
+% ============================================================================
+\section{Fundamento teórico}
+% ============================================================================
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Monte Carlo por media muestral}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \begin{block}{Estimador}
+        Sea $X$ v.a.\ con $\mathbb{E}[X] = \mu$ finita. Dadas $X_1,\ldots,X_n$
+        i.i.d.:
+        \[
+          \widehat{I}_n = \frac{v}{n}\sum_{i=1}^n X_i
+        \]
+        donde $v$ es el volumen del dominio de integración.
+      \end{block}
+      \vspace{0.3cm}
+      \begin{block}{Ley Fuerte de los Grandes Números}
+        \[
+          \widehat{I}_n \xrightarrow{\ \text{c.s.}\ } v\cdot\mu
+          \qquad (n\to\infty)
+        \]
+      \end{block}
+    \end{column}
+    \begin{column}{0.45\textwidth}
+      \begin{exampleblock}{Cota de error}
+        Por el TCL, para $n$ suficientemente grande:
+        \[
+          \varepsilon_n
+          = \frac{v\,\sigma}{\sqrt{n}}\,z_{\alpha/2}
+          = \mathcal{O}(n^{-1/2})
+        \]
+        donde $\sigma^2 = \mathrm{Var}(X)$.
+      \end{exampleblock}
+      \vspace{0.3cm}
+      \begin{alertblock}{Implicación para MCTS}
+        \textbf{Doblar la precisión} requiere \textbf{cuadruplicar}
+        las iteraciones. Justifica elegir\\
+        \centering
+        \texttt{ITERACIONES} $= 5.000$.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Proceso de Decisión de Markov (MDP)}
+  \begin{block}{Definición}
+    Un MDP es una cuádrupla $\mathcal{M} = (\mathcal{S},\mathcal{A},P,R)$:
+    \begin{itemize}
+      \item $\mathcal{S}$: espacio de \textbf{estados}
+      \item $\mathcal{A}$: espacio de \textbf{acciones}
+      \item $P(s'\mid s,a)$: \textbf{núcleo de transición}
+        (distribución del estado siguiente)
+      \item $R:\mathcal{S}\times\mathcal{A}\to\mathbb{R}$:
+        \textbf{función de recompensa}
+    \end{itemize}
+    La \textbf{propiedad de Markov}: $S_{t+1}\perp$ pasado $\mid (S_t,A_t)$.
+  \end{block}
+
+  %\vspace{0.3cm}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{Política y función de valor:}
+      \[
+        V^\pi(s) = \mathbb{E}_\pi\!\left[
+          \sum_{t\geq 0}\gamma^t R(S_t,A_t)\,\Big|\,S_0=s
+        \right]
+      \]
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Ecuación de Bellman:}
+      \[
+        V^*(s) = \max_{a\in\mathcal{A}}\!\left\{
+          R(s,a) + \gamma\sum_{s'} P(s'|s,a)\,V^*(s')
+        \right\}
+      \]
+    \end{column}
+  \end{columns}
+
+  %\vspace{0.2cm}
+  \begin{alertblock}{}
+    Resolver Bellman directamente requiere \emph{enumerar} $\mathcal{S}$
+    $\to$ inviable en trading. MCTS lo esquiva mediante simulación estocástica.
+  \end{alertblock}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{El MDP del trading sobre TSLA}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{Estado} $s_t = (P_t,\,\mathrm{MA}_{20},\,\mathrm{RSI}_{14},
+      \,\tau_t,\,C_t,\,N_t)$:
+      \begin{itemize}
+        \item $P_t$: precio de cierre
+        \item $\mathrm{MA}_{20}$: media móvil 20 días
+        \item $\mathrm{RSI}_{14}$: Relative Strength Index
+        \item $C_t$: efectivo disponible
+        \item $N_t$: acciones poseídas
+      \end{itemize}
+
+      \vspace{0.3cm}
+      \textbf{Recompensa terminal:}
+      \begin{block}{}
+      \[
+        R_T = \ln\!\frac{V_T^{\text{MCTS}}}{V_T^{\text{B\&H}}}
+      \]
+      \end{block}
+      %(log-retorno \emph{relativo} a Buy \& Hold)
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Espacio de acciones} $\mathcal{A}$ (11 elementos):
+      \vspace{0.2cm}
+
+      \begin{center}
+      \begin{tikzpicture}[scale=0.8,
+        acc/.style={rectangle, rounded corners=2pt,
+                    minimum width=5cm, minimum height=0.50cm,
+                    font=\ttfamily\tiny, align=center, text=white}]
+        \node[acc, fill=mctsDkGreen]    at (0, -0.56) {\scriptsize{COMPRAR 100\%}};
+        \node[acc, fill=mctsGreen]      at (0, -1.12) {\scriptsize{COMPRAR 75\%}};
+        \node[acc, fill=mctsGreen!80]   at (0, -1.68) {\scriptsize{COMPRAR 50\%}};
+        \node[acc, fill=mctsGreen!60]   at (0, -2.24) {\scriptsize{COMPRAR 25\%}};
+        \node[acc, fill=mctsGreen!40, text=black] at (0, -2.80) {\scriptsize{COMPRAR 10\%}};
+        \node[acc, fill=mctsBlue]       at (0, -3.36) {\scriptsize{MANTENER}};
+        \node[acc, fill=mctsRed!40, text=black]   at (0, -3.92) {\scriptsize{VENDER 10\%}};
+        \node[acc, fill=mctsRed!60]     at (0, -4.48) {\scriptsize{VENDER 25\%}};
+        \node[acc, fill=mctsRed]        at (0, -5.04) {\scriptsize{VENDER 50\%}};
+        \node[acc, fill=mctsRed!80]     at (0, -5.60) {\scriptsize{VENDER 75\%}};
+        \node[acc, fill=mctsRed!90!black] at (0, -6.06) {\scriptsize{VENDER 100\%}};
+      \end{tikzpicture}
+      \end{center}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Los 4 pasos del MCTS}
+  \begin{center}
+  \begin{tikzpicture}[
+    mctsbox/.style={rectangle, rounded corners=6pt,
+                    minimum width=3.8cm, minimum height=2cm,
+                    text centered, font=\small\bfseries,
+                    text width=3.2cm},
+    arrow/.style={-Stealth, thick, shorten >=2pt, shorten <=2pt}
+  ]
+    % Nodos
+    \node[mctsbox, fill=mctsBlue, text=white]
+      (sel) at (-1.0,0) {(1) SELECCIÓN\\[2pt]\vspace{1.4ex}
+        \normalfont\scriptsize UCB1 guía hacia\\el nodo más prometedor};
+
+    \node[mctsbox, fill=mctsGreen, text=white]
+      (exp) at (4.8,0) {(2) EXPANSIÓN\\[2pt]\vspace{1.4ex}
+        \normalfont\scriptsize Añadir un nuevo nodo hijo al árbol\\[4pt]
+        $\begin{cases} N(s,a) & \text{\tiny visitas} \\ Q(s,a) & \text{\tiny retornos} \end{cases}$};
+
+    \node[mctsbox, fill=mctsOrange, text=white]
+      (rol) at (10.6,0) {(3) ROLLOUT\\[2pt]\vspace{1.4ex}
+        \normalfont\scriptsize Simular el futuro\\con GBM hasta $H$};
+
+    \node[mctsbox, fill=mctsPurple, text=white]
+      (ret) at (4.8,-2.5) {(4) RETROPROPAGACIÓN\\[2pt]\vspace{1.4ex}
+        \normalfont\scriptsize Propagar el retorno $X$\\
+        actualizando $N$ y $Q$};
+
+    % Flechas
+    \draw[arrow, mctsBlue] (sel.east) -- (exp.west)
+      node[midway, above, font=\scriptsize] {hoja};
+    \draw[arrow, mctsGreen] (exp.east) -- (rol.west)
+      node[midway, above, font=\scriptsize] {nodo nuevo};
+    \draw[arrow, mctsOrange] (rol.south) -- ++(0,-1.5) |- (ret.east)
+      node[near start, below, font=\scriptsize] {retorno $X$};
+    \draw[arrow, mctsPurple] (ret.west) -| (sel.south)
+      node[near start, below, font=\scriptsize] {actualiza árbol};
+
+    % Iteración
+    \node[font=\small\itshape, text=uvblue]
+      at (4.8,-3.9) {Se repite \texttt{ITERACIONES} veces};
+  \end{tikzpicture}
+  \end{center}
+
+  \vspace{0.2cm}
+  Al final: elegir $\arg\max_a N(s_0,a)$
+  (\textbf{política max-visits}, más robusta que max-$Q$)
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{UCB1: dilema exploración–explotación}
+  \begin{block}{Fórmula UCB1 \footnotesize{(Kocsis \& Szepesvári, 2006)}}
+    \[
+      a^*_{\text{UCB1}}(s)
+      \;=\;
+      \arg\max_{a\in\mathcal{A}(s)}
+      \Bigl\{
+        \underbrace{\dfrac{Q(s,a)}{N(s,a)}}_{\text{explotación}}
+        \;+\;
+        \sqrt{2}\,\underbrace{\sqrt{\dfrac{\ln N(s)}{N(s,a)}}}_{\text{exploración}}
+      \Bigr\}\hspace{2em}
+    \]
+  \end{block}
+
+  \vspace{0.3cm}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \begin{exampleblock}{Término de explotación}
+        Favorece acciones con \textbf{alta recompensa media} ya observada.
+      \end{exampleblock}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{alertblock}{Término de exploración}
+        Favorece acciones \textbf{poco visitadas}: si $N(s,a)$ se mantiene
+        acotado mientras $N(s)\to\infty$, el término diverge
+        $\to$ toda acción se visita infinitas veces.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+
+  \vspace{0.3cm}
+  MCTS con UCB1 es un método iterativo tipo \textbf{Gauss–Seidel adaptativo}:
+  actualiza una sola componente $q^{(k)}(a)$ por iteración,
+  eligiendo la componente mediante la fórmula UCB1 en lugar de un orden cíclico.
+\end{frame}
+
+% ---------------------------------------------------------------------------
+%\begin{comment} %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{frame}{NO !!!!!!!!!Analogía Gauss–Seidel y convergencia $\mathcal{O}(N^{-1/2})$}
+  \begin{columns}[T]
+    \begin{column}{0.49\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{patron_actualizacion.png}
+      \vspace{0.1cm}
+      \begin{block}{\small Regla de actualización (iteración $k$)}
+        \small
+        $q^{(k+1)}(a) = (1-\alpha_k)\,q^{(k)}(a) + \alpha_k X_{k+1}$,
+        \quad $\alpha_k = \tfrac{1}{N^{(k)}(a)+1}$\\[3pt]
+        MCTS elige adaptativamente \emph{qué} acción actualizar
+        mediante UCB1, en lugar del orden cíclico de Gauss–Seidel.
+        El parámetro $c=\sqrt{2}$ hace el papel de la relajación $\omega$ en SOR.
+      \end{block}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \centering
+      \vspace{2ex}
+      \includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{convergencia_iterativa.png}
+      \vspace{0.1cm}
+      \begin{block}{\small Cota de error del estimador Monte Carlo}
+        \small
+        $\bigl|e^{(k)}(a)\bigr| = \bigl|q^{(k)}(a)-\mathbb{E}[R_T|s_0,a]\bigr|
+        = \mathcal{O}(N^{-1/2})$\\[3pt]
+        La pendiente $-\tfrac{1}{2}$ en escala log-log confirma
+        que el error decae como el del estimador de Monte Carlo.
+        UCB1 garantiza $N(a)\to\infty$ para toda acción (aplicabilidad de LLN).
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+%\end{comment}%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ---------------------------------------------------------------------------
+\begin{frame}{Movimiento Browniano Geométrico (GBM)}
+  \textbf{Motor de simulación del rollout.}
+  Bajo la hipótesis de log-retornos gaussianos el precio satisface:
+  \[
+    dS_t = \mu S_t\,dt + \sigma S_t\,dW_t
+  \]
+
+  \begin{block}{Solución exacta (Lema de Itô)}
+    \[
+      S_{t+h} = S_t\exp\!\left(
+        \Bigl(\mu - \tfrac{\sigma^2}{2}\Bigr)h
+        + \sigma\sqrt{h}\,Z
+      \right), \qquad Z\sim\mathcal{N}(0,1)
+    \]
+    Sin error de discretización (solución analítica, no Euler–Maruyama).
+  \end{block}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+
+\begin{frame}
+      \begin{exampleblock}{Calibración rolling}
+        $(\hat\mu,\hat\sigma)$ estimados sobre los últimos
+        \texttt{VENTANA\_CALIB}$=60$ días de log-retornos:
+        \[
+          r_k = \ln\!\tfrac{P_k}{P_{k-1}}
+        \]
+        \textbf{Sin lookforward bias}: solo se usan datos pasados.
+      \end{exampleblock}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Convergencia del MCTS}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \begin{block}{Argumento}
+        Para cada acción $a\in\mathcal{A}$, UCB1 garantiza
+        $N(s_0,a)\to\infty$ conforme el total de iteraciones $n\to\infty$.
+        Por el Corolario de la LLN:
+        \[
+          \frac{Q(s_0,a)}{N(s_0,a)}
+          \;\xrightarrow{\text{c.s.}}\;
+          \mathbb{E}[R_T\mid s_0,a]
+        \]
+      \end{block}
+
+      \vspace{0.1cm}
+      \begin{block}{Error del estimador}
+        Recurrencia lineal con $\alpha_k = 1/(N^{(k)}(a)+1)$:
+        \[
+          q^{(k+1)}(a) = (1-\alpha_k)\,q^{(k)}(a) + \alpha_k X_{k+1}
+        \]
+        La varianza decae: $\mathrm{Var}(e^{(k)}) = \sigma^2(a)/N^{(k)}(a) = \mathcal{O}(N^{-1})$,
+        luego error $= \mathcal{O}(N^{-1/2})$.
+      \end{block}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \textbf{MCTS como método iterativo:}
+      \vspace{0.15cm}
+
+      \begin{center}
+      \small
+      \begin{tabular}{@{}p{2.8cm}p{2.8cm}@{}}
+        \toprule
+        \textbf{Tema 6} & \textbf{MCTS} \\
+        \midrule
+        Iterado $x^{(k)}$ & $q^{(k)}(a)$ \\
+        Solución $x^*$ & $\mathbb{E}[R_T\mid s_0,a]$ \\
+        Término indep.\ $b$ & Retorno $X_{k+1}$ \\
+        Matriz iteración $Q$ & $1-\alpha_k$ \\
+        $\rho(Q)<1$ & $|1-\alpha_k|<1$ \checkmark \\
+        Gauss–Seidel & MCTS con UCB1 \\
+        Relajación $\omega$ & Exploración $c$ \\
+        \bottomrule
+      \end{tabular}
+      \end{center}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ============================================================================
+\section{Implementación en Python}
+% ============================================================================
+
+% ---------------------------------------------------------------------------
+\begin{frame}[fragile]{NO !!!Estructura del código}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{Archivo:} \texttt{mcts\_simple\_TSLA.py}
+      \vspace{0.2cm}
+
+      \begin{center}
+      \begin{tikzpicture}[
+        mod/.style={rectangle, rounded corners=3pt,
+                    fill=uvblue!15, draw=uvblue!50,
+                    minimum width=4cm, minimum height=0.45cm,
+                    font=\ttfamily\tiny, text centered},
+        scale=0.9
+      ]
+        \node[mod] (p) at (0, 0)    {\S1 Descarga de datos (yfinance)};
+        \node[mod] at (0,-0.55) {\S2 Espacio de acciones (11)};
+        \node[mod] at (0,-1.10) {\S3 Señales técnicas (RSI, MA20)};
+        \node[mod] at (0,-1.65) {\S4 Estado de la cartera};
+        \node[mod] at (0,-2.20) {\S4 Calibración GBM (rolling)};
+        \node[mod, fill=mctsBlue!20, draw=mctsBlue!60]
+                   at (0,-2.75) {\S5 Los 4 pasos del MCTS};
+        \node[mod] at (0,-3.30) {\S6 Bucle principal MCTS};
+        \node[mod] at (0,-3.85) {\S7 Backtest día a día};
+        \node[mod] at (0,-4.40) {\S8 Métricas financieras};
+        \node[mod] at (0,-4.95) {\S9--10 Visualización (4 figuras)};
+      \end{tikzpicture}
+      \end{center}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Parámetros globales:}
+      \vspace{0.1cm}
+\begin{lstlisting}
+TICKER        = "TSLA"
+PERIOD        = "2y"     # ~506 sesiones
+CAPITAL_INIT  = 10_000   # USD
+ITERACIONES   = 1_000    # por decision
+DIAS_ROLLOUT  = 60       # horizonte GBM
+VENTANA_CALIB = 60       # dias rolling
+SEMILLA       = 42       # reproducibilidad
+\end{lstlisting}
+      \vspace{0.2cm}
+      \begin{exampleblock}{Flujo principal}
+        \begin{enumerate}\small
+          \item Descargar precios históricos
+          \item Para cada día: ejecutar MCTS
+          \item Aplicar acción con precio real
+          \item Registrar evolución de la cartera
+          \item Comparar con Buy \& Hold
+        \end{enumerate}
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}[fragile]{NO !!!Funciones clave: estado y calibración GBM}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{Estado de la cartera:}
+\begin{lstlisting}
+def crear_estado(dia, efectivo,
+                 acciones, precio,
+                 precios_hist=None):
+    rsi  = calcular_rsi(precios_hist, dia)
+    ma20 = calcular_ma(precios_hist, dia)
+    return {
+        "dia":      dia,
+        "efectivo": efectivo,
+        "acciones": acciones,
+        "precio":   precio,
+        "rsi":      rsi,
+        "ma20":     ma20,
+    }
+\end{lstlisting}
+      \small
+      El valor total es: $C_t + N_t \cdot P_t$
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Calibración GBM (rolling):}
+\begin{lstlisting}
+def calibrar_gbm(precios, dia):
+    inicio = max(0, dia - VENTANA_CALIB)
+    ventana = precios[inicio:dia+1]
+    log_ret = np.diff(np.log(ventana))
+    mu    = float(np.mean(log_ret))
+    sigma = float(np.std(log_ret, ddof=1))
+    return mu, sigma
+\end{lstlisting}
+      \vspace{0.2cm}
+      \textbf{Simulación GBM exacta:}
+\begin{lstlisting}
+precio_futuro = precio_actual * exp(
+    (mu_a - 0.5*sigma_a**2)*T
+    + sigma_a * sqrt(T) * Z
+)  # Z ~ N(0,1)
+\end{lstlisting}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}[fragile]{NO !!!Funciones clave: los 4 pasos}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{UCB1:}
+\begin{lstlisting}
+def ucb1(nodo, c=math.sqrt(2)):
+    if nodo["n"] == 0:
+        return float("inf")
+    expl = nodo["w"] / nodo["n"]
+    padre = nodo["padre"]
+    expl += c * sqrt(
+        log(padre["n"]) / nodo["n"]
+    )
+    return expl
+\end{lstlisting}
+
+      \vspace{0.2cm}
+      \textbf{Selección:}
+\begin{lstlisting}
+def seleccionar(raiz, acc_posibles):
+    nodo = raiz
+    while not acciones_no_exploradas(
+            nodo, acc_posibles) \
+          and nodo["hijos"]:
+        nodo = max(nodo["hijos"],
+                   key=ucb1)
+    return nodo
+\end{lstlisting}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Rollout (recompensa relativa):}
+\begin{lstlisting}
+# Mismo Z para agente y B&H: justo
+Z = rng.standard_normal()
+precio_sim = estado["precio"] * exp(
+    (mu_a - 0.5*sigma_a**2)*T
+    + sigma_a*sqrt(T)*Z
+)
+log_ret_agente = log(valor_agente /
+                     valor_inicial)
+log_ret_bah = log(precio_sim /
+                  precio_actual)
+recompensa = log_ret_agente - log_ret_bah
+\end{lstlisting}
+      \vspace{0.1cm}
+      \textbf{Retropropagación:}
+\begin{lstlisting}
+def retropropagar(nodo, recompensa):
+    while nodo is not None:
+        nodo["n"] += 1
+        nodo["w"] += recompensa
+        nodo = nodo["padre"]
+\end{lstlisting}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Decisiones de diseño relevantes}
+  \small
+  \begin{block}{Recompensa relativa vs.\ absoluta}
+    Recompensa $=$ exceso de log-retorno del agente sobre B\&H.
+    Si mercado sube $5\%$ y agente sube $3\%$, recompensa $= -2\%$:
+    penaliza estar poco invertido en mercado alcista.
+  \end{block}
+
+  \vspace{0.08cm}
+  \begin{block}{Filtro de acciones viables (\texttt{acciones\_viables})}
+    Sin efectivo $\to$ excluye COMPRAR; sin acciones $\to$ excluye VENDER.
+    Evita que VENDER con posición vacía compita con MANTENER y sea
+    coronada erróneamente por el ruido de los rollouts.
+  \end{block}
+
+  \vspace{0.08cm}
+  \begin{block}{\emph{Common Random Numbers} en el rollout}
+    Agente y B\&H usan el \textbf{mismo} $Z\sim\mathcal{N}(0,1)$:
+    misma trayectoria de mercado, solo cambia la decisión.
+    Reduce la varianza de la estimación comparativa.
+  \end{block}
+
+  \vspace{0.08cm}
+  \begin{block}{Política de selección final: max-visits}
+    Se elige $\arg\max_a N(s_0,a)$ en lugar de $\arg\max_a Q/N$.
+    Con $Q/N$ alto pero $N$ pequeño el error estándar $\sigma/\sqrt{N}$ es grande
+    $\to$ max-visits es estadísticamente más robusta.
+  \end{block}
+\end{frame}
+
+% ============================================================================
+\section{Resultados}
+% ============================================================================
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Configuración experimental}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \begin{center}
+      \small
+      \begin{tabular}{ll}
+        \toprule
+        Activo & TSLA (Tesla, Inc.) \\
+        Periodo & 2 años ($\approx 506$ sesiones) \\
+        Capital inicial & $10\,000$ USD \\
+        \texttt{ITERACIONES} & $5\,000$ \\
+        \texttt{DIAS\_ROLLOUT} & $60$ \\
+        \texttt{VENTANA\_CALIB} & $60$ días \\
+        \texttt{SEMILLA} & $42$ \\
+        \bottomrule
+      \end{tabular}
+      \end{center}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{alertblock}{Contexto del mercado}
+        Periodo de altísima volatilidad:\\
+        \begin{itemize}
+          \item Precio: $\approx 150\$$ $\to$ $\approx 480\$$ (máx., día 170)
+          \item Corrección severa: $\approx -75\%$ (día 230)
+          \item Recuperación al máximo (día 420)
+          \item Cierre: $\approx 350\$$
+          \item Volatilidad diaria media: $1.903\%$\\
+            ($\approx 30.2\%$ anualizada)
+        \end{itemize}
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Precio del activo y evolución de la cartera}
+      \centering
+      \includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{ind_precio_señales.png}
+
+       \begin{block}{\small Señales de decisión MCTS}
+        \small
+        $\textcolor{green}{\blacktriangle}$ COMPRAR\;/\;$\textcolor{red}{\blacktriangledown}$ VENDER en cada sesión.\\[2pt]
+        En el tramo bajista (días 150–230) predominan las ventas;
+        en el alcista, las compras. La política adapta la exposición
+        al régimen detectado por el GBM con ventana móvil.
+      \end{block}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Precio del activo y evolución de la cartera}
+      \centering
+       \includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{ind_cartera_base100.png}
+	\begin{equation*}
+		\text{Valor de la Cartera: }\quad V_t = C_t + N_t\cdot P_t
+	\end{equation*}
+	\vspace{-1.5em}
+        \begin{block}
+        \small
+         La gestión activa de \textbf{MCTS preserva el capital}
+        mientras B\&H sufre la caída completa.
+      \end{block}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+    
+    \begin{frame}{Ventaja relativa sobre B\&H: Alfa}
+      \centering
+      \includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{ind_alfa_mcts.png}
+	\begin{equation*}
+		\text{Alfa (exceso de retorno): }\quad \alpha_t = \left(\dfrac{V_t^{\text{MCTS}}}{V_t^{\text{B\&H}}}-1\right)\!\times 100\%
+	\end{equation*}
+	\vspace{-1.5em}
+        \begin{exampleblock}
+        \small
+        \begin{itemize}
+        \item Alfa positivo : MCTS supera al mercado.\\
+        \item Pico $\approx +80\%$ tras el mínimo de la corrección.\\
+        \item La alfa tiende a \textbf{crecer}.
+        \end{itemize}
+        \end{exampleblock}
+\end{frame}
+% ---------------------------------------------------------------------------
+\begin{frame}{Precio del activo y evolución de la cartera}
+      \centering
+      \includegraphics[width=\linewidth,height=3.8cm]{ind_exposicion_precio.png}
+
+       \begin{block}{\small Señales de decisión MCTS}
+        \small
+        Señales diferenciadas por intensidad: $\textcolor{mctsDkGreen}{\blacktriangle}$ COMPRAR100 \% vs.$\textcolor{mctsRed!90!black}{\blacktriangledown}$ VENDER 100\%..\\ 
+        La política binaria predomina $\leftrightarrow$ operaciones parciales son minoritarias.
+      \end{block}
+\end{frame}
+    % ---------------------------------------------------------------------------
+\begin{frame}{Exposición dinámica al activo}
+
+      \centering
+      \includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{ind_exposicion_ratio.png}
+      \vspace{0.08cm}
+      \begin{block}{\small Ratio de exposición}
+        \small
+        \textcolor{blue}{MCTS} aprende una política \textbf{todo-o-nada}:
+        $\rho_t\approx 0$ o $\rho_t\approx 1$.
+        B\&H mantiene $\rho = 1$ constante (línea naranja).
+        Exposición media MCTS $\approx 60\%$.
+      \end{block}
+\end{frame}
+% ---------------------------------------------------------------------------
+
+    \begin{frame}{Ventaja relativa sobre B\&H: Drawdown}
+      \centering
+      \includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{ind_drawdown.png}
+	\begin{equation*}
+		\text{Drawdown máximo: }\quad \text{DD}_t = \dfrac{V_t - \max_{s\leq t}V_s}{\max_{s\leq t}V_s}\times 100\%
+	\end{equation*}
+	MCTS: $\approx -10\%$\quad vs.\quad B\&H: $\approx -75\%$.\\
+	%\vspace{-1.5em}
+        \begin{alertblock}
+        \small
+        \begin{itemize}
+        \item Salida al efectivo antes de la corrección limita drásticamente la caída máxima.
+        \end{itemize}
+        \end{alertblock}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Convergencia UCB1}
+      \centering
+      \includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{ind_convergencia_ucb.png}
+      \vspace{0.08cm}
+      \begin{equation*}
+      	 \dfrac{Q(a)}{N(a)} \,\xrightarrow{\;\text{c.s.}\;} \,\mathbb{E}[R_T|s_0,a]
+        \quad \textcolor{blue}{(LLN)}
+      \end{equation*}
+      \begin{block}{}
+        Las líneas se estabilizan en \textcolor{orange}{$\approx 500$ iteraciones}.
+        La envolvente decrece $\propto N^{-1/2}$, validando
+        la cota teórica del estimador de Monte Carlo.
+      \end{block}
+
+\end{frame}
+
+% ---------------------------------------------------------------------------
+
+\begin{frame}{NO !!!Distribución de retornos diarios}
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{ind_violin_comparativo.png}
+      \vspace{0.08cm}
+      \begin{block}{\small Retorno diario y Sharpe anualizado}
+        \small
+        $r_t = \dfrac{V_t - V_{t-1}}{V_{t-1}}$,\quad
+        $\text{Sharpe} = \dfrac{\bar{r}}{\hat\sigma_r}\sqrt{252}$\\[2pt]
+        Mediana MCTS $= 0$ (días en efectivo).
+        Asimetría positiva: cola derecha más larga que la izquierda,
+        coherente con la política de \emph{market timing}.
+      \end{block}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{ind_violin_estadisticas.png}
+      \vspace{0.08cm}
+      \begin{exampleblock}{\small Estadísticas comparativas}
+        \small
+        \textbf{MCTS:} media $+0.302\%$, std $3.07\%$,
+        Sharpe $\approx 1.56$.\\[2pt]
+        \textbf{B\&H:} media $+0.232\%$, std $1.90\%$,
+        Sharpe $\approx 1.93$.\\[2pt]
+        Mayor retorno medio a costa de mayor volatilidad.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+% ---------------------------------------------------------------------------
+\begin{frame}{Métricas comparativas}
+  \begin{center}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{lcc}
+    \toprule
+    \textbf{Métrica} & \textbf{MCTS} & \textbf{Buy \& Hold} \\
+    \midrule
+    ROI total             & $\approx \textcolor{mctsDkGreen}{+240\%}$ & \textcolor{mctsRed!80}{$\approx +100\%$} \\
+    Retorno diario medio  & $+0.302\%$       & $+0.232\%$ \\
+    Desv.\ típica diaria  & $3.065\%$        & $1.903\%$ \\
+    Sharpe anualizado     & $\approx 1.56$   & $\approx 1.93$ \\
+    Días con retorno $>0$ & 216 (43.3\%)     & 254 (50.9\%) \\
+    Drawdown máximo       & $\approx -10\%$  & $\approx -75\%$ \\
+    Alfa final vs.\ B\&H  & $\approx +40\%$  & — \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+
+  \vspace{0.3cm}
+  \begin{alertblock}{Tensión principal}
+    MCTS supera a B\&H en retorno total ($+240\%$ vs.\ $+100\%$)
+    pero tiene \textbf{Sharpe inferior} ($1.56$ vs.\ $1.93$).
+    La política binaria implica mayor volatilidad diaria,
+    pero el drawdown máximo es solo $-10\%$ frente al $-75\%$ de B\&H.
+  \end{alertblock}
+\end{frame}
+
+% ============================================================================
+\section{Discusión y conclusiones}
+% ============================================================================
+
+% ---------------------------------------------------------------------------
+\begin{frame}{Limitaciones del modelo}
+  \vspace{0.3cm}
+  \centering
+  \begin{tikzpicture}[
+    card/.style={rectangle, rounded corners=6pt,
+                 fill=uvblue!7, draw=uvblue!30, line width=0.8pt,
+                 minimum width=13.5cm, text width=12.2cm,
+                 inner sep=10pt},
+    badge/.style={circle, fill=uvblue, text=white,
+                  font=\bfseries\large,
+                  minimum size=0.85cm, inner sep=0pt}
+  ]
+    % --- Tarjeta L1 ---
+    \node[card] (c1) at (0, 0) {%
+      \hspace{1.1cm}%
+      \parbox{11cm}{\small
+        \textbf{GBM con colas ligeras}\\[3pt]
+        Los log-retornos gaussianos subestiman eventos extremos (\emph{fat tails}).
+        La caída $-75\%$ de TSLA ocurre en la realidad con mucha más frecuencia
+        de la que predice el modelo.
+        Extensión natural: modelo de Merton (GBM + saltos de Poisson).
+      }
+    };
+    \node[badge] at ([xshift=-5.8cm]c1.center) {L1};
+
+    % --- Tarjeta L2 (anclada bajo c1 para alineación exacta) ---
+    \node[card, below=0.45cm of c1] (c2) {%
+      \hspace{1.1cm}%
+      \parbox{11cm}{\small
+        \textbf{Validez limitada al periodo analizado}\\[3pt]
+        Los hiperparámetros no se han separado en \emph{in-sample / out-of-sample},
+        y TSLA en este periodo es especialmente favorable para \emph{market timing}.
+        Una evaluación rigurosa requiere validación cruzada temporal
+        y repetición con distintas semillas y activos.
+      }
+    };
+    \node[badge] at ([xshift=-5.8cm]c2.center) {L2};
+  \end{tikzpicture}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+% --- Colores de las tarjetas de conclusiones (cambiar aquí) ---
+\colorlet{concUno}{uvblue}
+\colorlet{concDos}{mctsGreen!80!black}
+\colorlet{concTres}{mctsOrange}
+
+\begin{frame}{Conclusiones}
+  \vspace{0.2cm}
+  \centering
+  \begin{tikzpicture}[
+    card/.style={rectangle, rounded corners=6pt,
+                 minimum width=13.5cm, text width=12.2cm,
+                 inner sep=10pt},
+    badge/.style={circle, text=white,
+                  font=\bfseries\large,
+                  minimum size=0.85cm, inner sep=0pt}
+  ]
+    % --- C1 ---
+    \node[card, fill=concUno!7, draw=concUno!30, line width=0.8pt] (c1) at (0, 0) {%
+      \hspace{1.1cm}%
+      \parbox{11cm}{\small
+        \textbf{Fundamento teórico}\\[3pt]
+        $Q(a)/N(a)$ es el estimador de Monte Carlo aplicado a los rollouts.
+        Converge c.s.\ por la LLN y el error decae $\mathcal{O}(N^{-1/2})$.
+      }
+    };
+    \node[badge, fill=concUno] at ([xshift=-5.8cm]c1.center) {C1};
+
+    % --- C2 ---
+    \node[card, fill=concDos!7, draw=concDos!30, line width=0.8pt, below=0.35cm of c1] (c2) {%
+      \hspace{1.1cm}%
+      \parbox{11cm}{\small
+        \textbf{Resultado experimental}\\[3pt]
+        ROI $\approx+240\%$ vs.\ $+100\%$ B\&H
+        $\;\cdot\;$ drawdown $-10\%$ vs.\ $-75\%$
+        $\;\cdot\;$ Sharpe $1.56$ vs.\ $1.93$.
+      }
+    };
+    \node[badge, fill=concDos] at ([xshift=-5.8cm]c2.center) {C2};
+
+    % --- C3 ---
+    \node[card, fill=concTres!7, draw=concTres!30, line width=0.8pt, below=0.35cm of c2] (c3) {%
+      \hspace{1.1cm}%
+      \parbox{11cm}{\small
+        \textbf{Política emergente}\\[3pt]
+        MCTS aprendió una política \textcolor{teal}{todo-o-nada}.
+        Esto sugiere que, bajo una recompensa relativa a B\&H,
+        las posiciones intermedias no aportan ventaja sistemática.
+      }
+    };
+    \node[badge, fill=concTres] at ([xshift=-5.8cm]c3.center) {C3};
+  \end{tikzpicture}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}{NO !!!Posibles extensiones}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \begin{exampleblock}{Extensiones del modelo}
+        \begin{itemize}
+          \item \textbf{GBM multivariante:} cartera de varios activos
+            con correlaciones (Cholesky)
+          \item \textbf{Modelo de Merton:} GBM + saltos de Poisson
+            para capturar \emph{fat tails}
+          \item \textbf{Costes de transacción:} penalización
+            $\propto |\Delta\text{posición}|$
+        \end{itemize}
+      \end{exampleblock}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{exampleblock}{Extensiones del método}
+        \begin{itemize}
+          \item \textbf{Reducción de varianza:} quasi-Monte Carlo
+            (Sobol, Halton) $\to$ tasa $\mathcal{O}(n^{-1})$
+          \item \textbf{Criterio de parada adaptativo:}
+            detener cuando $\sigma(a)/\sqrt{N(a)} \leq \varepsilon$
+          \item \textbf{Optimización de hiperparámetros:}
+            búsqueda en cuadrícula con validación cruzada temporal
+        \end{itemize}
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+
+  \vspace{0.4cm}
+  \begin{alertblock}{Próxima sección (trabajo futuro)}
+    Otras aplicaciones del MCTS más allá del trading financiero:
+    juegos de tablero (Go, ajedrez), planificación robótica,
+    diseño de fármacos, optimización combinatoria\ldots
+  \end{alertblock}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\begin{frame}[plain]
+  \begin{center}
+    \vspace{1.5cm}
+    {\Large\bfseries\color{uvblue} Gracias por la atención}
+
+    \vspace{1cm}
+    {\large Carlos Ruiz Navarro}\\[0.3cm]
+    {\small Métodos Numéricos · Universitat de València}
+
+    \vspace{1cm}
+    \begin{tikzpicture}
+      \node[rectangle, rounded corners=8pt,
+            fill=uvblue!10, draw=uvblue!40,
+            minimum width=9cm, minimum height=2.2cm,
+            text width=8.5cm, align=center, font=\small] {
+        \textbf{Código disponible en:}\\[0.2cm]
+        \texttt{mcts\_simple\_TSLA.py}\\
+        \small (carpeta \texttt{mcts\_activos/mcts\_simple\_TSLA/})
+      };
+    \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+% ============================================================================
+\end{document}
+% ============================================================================
