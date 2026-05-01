@@ -29,6 +29,8 @@ import json
 
 # Directorio del propio script — todos los archivos generados se guardan aquí
 DIR = os.path.dirname(os.path.abspath(__file__))
+# Subdirectorio para figuras individuales (paneles sueltos)
+FIGURAS_IND_DIR = os.path.join(DIR, "figuras_individuales")
 
 # =============================================================================
 # PARÁMETROS GLOBALES
@@ -38,7 +40,7 @@ DIR = os.path.dirname(os.path.abspath(__file__))
 TICKER        = "TSLA"   # Símbolo del activo a analizar
 PERIOD        = "2y"     # Período de descarga: "1y", "6mo", "2y", etc.
 CAPITAL_INIT  = 10_000   # Capital inicial en USD
-ITERACIONES   = 1000     # Iteraciones MCTS por decisión (más = mejor, más lento)
+ITERACIONES   = 5000     # Iteraciones MCTS por decisión (más = mejor, más lento)
 DIAS_ROLLOUT  = 60       # Días simulados en cada rollout (horizonte de visión)
 VENTANA_CALIB = 60       # Días para estimar mu y sigma (calibración rolling)
 SEMILLA       = 42       # Semilla para reproducibilidad
@@ -1075,6 +1077,19 @@ def graficar(precios: np.ndarray, cartera_mcts: list,
     ax4.grid(alpha=0.25)
 
     plt.savefig(os.path.join(DIR, "mcts_simple_resultado.png"), dpi=150, bbox_inches="tight")
+
+    # Guardar cada panel individualmente
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    for ax, nombre in [(ax1, "ind_precio_señales"),
+                       (ax2, "ind_cartera_base100"),
+                       (ax3, "ind_alfa_mcts"),
+                       (ax4, "ind_drawdown")]:
+        bb = ax.get_tightbbox(renderer).transformed(fig.dpi_scale_trans.inverted())
+        fig.savefig(os.path.join(FIGURAS_IND_DIR, f"{nombre}.png"),
+                    dpi=150, bbox_inches=bb)
+    print(f"[OK] Fig 1 y 4 paneles individuales guardados en {FIGURAS_IND_DIR}/")
+
     plt.close()
     print(f"[OK] Fig 1 guardada: {os.path.join(DIR, 'mcts_simple_resultado.png')}")
 
@@ -1152,6 +1167,13 @@ def graficar_convergencia_ucb(ucb_historial: dict) -> None:
 
     plt.tight_layout()
     plt.savefig(os.path.join(DIR, "mcts_convergencia_ucb.png"), dpi=150, bbox_inches="tight")
+
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    bb = ax.get_tightbbox(renderer).transformed(fig.dpi_scale_trans.inverted())
+    fig.savefig(os.path.join(FIGURAS_IND_DIR, "ind_convergencia_ucb.png"),
+                dpi=150, bbox_inches=bb)
+
     plt.close()
     print(f"[OK] Fig 2 guardada: {os.path.join(DIR, 'mcts_convergencia_ucb.png')}")
 
@@ -1252,6 +1274,15 @@ def graficar_violin_retornos(cartera_mcts: list,
 
     plt.tight_layout()
     plt.savefig(os.path.join(DIR, "mcts_violin_retornos.png"), dpi=150, bbox_inches="tight")
+
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    for panel_ax, nombre in [(axes[0], "ind_violin_comparativo"),
+                              (axes[1], "ind_violin_estadisticas")]:
+        bb = panel_ax.get_tightbbox(renderer).transformed(fig.dpi_scale_trans.inverted())
+        fig.savefig(os.path.join(FIGURAS_IND_DIR, f"{nombre}.png"),
+                    dpi=150, bbox_inches=bb)
+
     plt.close()
     print(f"[OK] Fig 3 guardada: {os.path.join(DIR, 'mcts_violin_retornos.png')}")
 
@@ -1350,6 +1381,15 @@ def graficar_exposicion_dinamica(precios: np.ndarray,
 
     plt.tight_layout()
     plt.savefig(os.path.join(DIR, "mcts_exposicion_dinamica.png"), dpi=150, bbox_inches="tight")
+
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    for panel_ax, nombre in [(ax1, "ind_exposicion_precio"),
+                              (ax2, "ind_exposicion_ratio")]:
+        bb = panel_ax.get_tightbbox(renderer).transformed(fig.dpi_scale_trans.inverted())
+        fig.savefig(os.path.join(FIGURAS_IND_DIR, f"{nombre}.png"),
+                    dpi=150, bbox_inches=bb)
+
     plt.close()
     print(f"[OK] Fig 4 guardada: {os.path.join(DIR, 'mcts_exposicion_dinamica.png')}")
 
@@ -1384,6 +1424,7 @@ if __name__ == "__main__":
     # Cada función guarda su PNG y cierra la figura con plt.close(),
     # evitando que plt.show() bloquee entre llamadas.
     # Al final abrimos los 4 archivos de golpe con el visor del sistema.
+    os.makedirs(FIGURAS_IND_DIR, exist_ok=True)
     print("\n[INFO] Generando figuras...")
     graficar(precios, cartera_mcts, cartera_bah, acciones)
     graficar_convergencia_ucb(ucb_hist)

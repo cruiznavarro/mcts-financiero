@@ -120,13 +120,13 @@ Si $N(s,a)$ permaneciera acotado mientras $N(s) \to \infty$, el término de expl
 El algoritmo Monte Carlo Tree Search mantiene un árbol parcialmente expandido, enraizado en el estado actual $s_0$. Cada nodo almacena dos estadísticas: el contador de visitas $N$ y la suma acumulada de retornos $Q$. Cada iteración del algoritmo ejecuta, en orden, los cuatro pasos siguientes.
 
 \begin{enumerate}
-    \item[\textbf{(1) Selección.}] Partiendo de la raíz, se desciende por el árbol eligiendo en cada nodo interno la acción que maximiza~\eqref{eq:ucb1}, hasta alcanzar un nodo hoja. Esta fase se apoya exclusivamente en estadísticas ya recogidas en iteraciones previas y no consume recursos estocásticos.
+    \item[\textbf{\footnotesize{(1) Selección.}}] Partiendo de la raíz, se desciende por el árbol eligiendo en cada nodo interno la acción que maximiza~\eqref{eq:ucb1}, hasta alcanzar un nodo hoja. Esta fase se apoya exclusivamente en estadísticas ya recogidas en iteraciones previas y no consume recursos estocásticos.
 
-    \item[\textbf{(2) Expansión.}] Si el nodo hoja no es terminal y ha sido visitado antes, se le añade un nuevo nodo hijo correspondiente a una acción aún no probada. Esta operación hace crecer el árbol en una unidad.
+    \item[\textbf{\footnotesize{(2) Expansión.}}] Si el nodo hoja no es terminal y ha sido visitado antes, se le añade un nuevo nodo hijo correspondiente a una acción aún no probada. Esta operación hace crecer el árbol en una unidad.
 
-    \item[\textbf{(3) Rollout.}] Desde el nodo recién creado, se simula una trayectoria completa del MDP hasta el horizonte $H$, utilizando una política por defecto (en nuestro caso, uniforme sobre $\mathcal{A}$) y generando precios con el modelo GBM~\eqref{eq:gbm-exacta}. La trayectoria devuelve un retorno escalar $X$ que constituye \emph{una muestra} del estimador Monte Carlo estudiado en §\ref{sec:monte-carlo}.
+    \item[\textbf{\footnotesize{(3) Rollout.}}] Desde el nodo recién creado, se simula una trayectoria completa del MDP hasta el horizonte $H$, utilizando una política por defecto (en nuestro caso, uniforme sobre $\mathcal{A}$) y generando precios con el modelo GBM~\eqref{eq:gbm-exacta}. La trayectoria devuelve un retorno escalar $X$ que constituye \emph{una muestra} del estimador Monte Carlo estudiado en §\ref{sec:monte-carlo}.
 
-    \item[\textbf{(4) Retropropagación.}] El retorno $X$ se propaga hacia la raíz actualizando, para cada nodo $(s,a)$ del camino recorrido en la fase de selección,
+    \item[\textbf{\footnotesize{(4) Retroprop.}}] El retorno $X$ se propaga hacia la raíz actualizando, para cada nodo $(s,a)$ del camino recorrido en la fase de selección,
     \[
         N(s,a) \leftarrow N(s,a) + 1, \qquad Q(s,a) \leftarrow Q(s,a) + X.
     \]
