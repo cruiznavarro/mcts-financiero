@@ -1,0 +1,723 @@
+% ============================================================================
+%  Guión oral + Preguntas y respuestas — Defensa del seminario MCTS / TSLA
+%  Asignatura: Métodos Numéricos · Universitat de València
+%  Autor: Carlos Ruiz Navarro
+% ============================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage[a4paper, margin=2.3cm]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{hyperref}
+
+\definecolor{uvblue}{RGB}{0,94,184}
+\hypersetup{
+  colorlinks=false,
+  pdfborder={0 0 1},
+  allbordercolors={1 0 0},
+  pdftitle={Preguntas y respuestas — MCTS TSLA},
+  pdfauthor={Carlos Ruiz Navarro}
+}
+
+\titleformat{\section}
+  {\color{uvblue}\Large\bfseries}{\thesection}{0.6em}{}
+\titleformat{\subsection}
+  {\color{uvblue!85!black}\large\bfseries}{\thesubsection}{0.5em}{}
+
+\newcommand{\preg}[2]{%
+  \par\medskip
+  \noindent\textbf{P\,#1.} \emph{#2}\par\smallskip}
+
+\newcommand{\resp}[1]{%
+  \noindent #1\par}
+
+\title{\color{uvblue}\bfseries
+  Guión oral y preguntas para la defensa\\[2pt]
+  \large Monte Carlo Tree Search aplicado a TSLA}
+\author{Héctor Orosa, Sofía Ortiz, Carlos Ruiz}
+\date{Métodos Numéricos · Universitat de València}
+
+\begin{document}
+\maketitle
+
+\noindent
+Este documento recoge un banco de preguntas anticipadas para la defensa
+del seminario, con respuestas sintéticas. Las preguntas se han clasificado
+por temas y marcado por probabilidad estimada de aparición
+($\bigstar$~baja, $\bigstar\bigstar$~media, $\bigstar\bigstar\bigstar$~alta).
+La audiencia conoce: Monte Carlo clásico (estimador por media muestral, hit/miss,
+generación de aleatorios), LLN/TCL y análisis de error (Tema 9 y
+\texttt{montecarlo.pdf}), métodos iterativos Jacobi/Gauss--Seidel/SOR
+(Tema 6) y normas matriciales/radio espectral (Tema 5). \textbf{No} conoce
+MCTS, UCB1, MDP/Bellman ni GBM/Itô.
+
+\tableofcontents
+\bigskip
+
+% ============================================================================
+\section*{Guión oral — diapositivas 5 a 22 (5 minutos)}
+% ============================================================================
+
+\noindent
+18 diapositivas en 5 minutos $\approx$ \textbf{17 segundos por slide}.
+Una o dos frases por diapositiva, sin pausas entre ellas.
+Los tiempos indicados son orientativos.
+
+\newcommand{\slide}[4]{%
+  \par\medskip\noindent
+  \textbf{[#1 $\cdot$ #2]}\hfill\textit{$\sim$#3\,s}\par\smallskip
+  \noindent #4\par}
+
+\slide{5}{Motivación}{20}{%
+``Cada sesión bursátil un inversor decide comprar, vender o mantener.
+Es un problema de decisión secuencial bajo incertidumbre: el futuro es
+desconocido pero podemos asignarle probabilidades.
+La pregunta que nos hacemos es si existe una política
+sistemáticamente mejor que la estrategia pasiva de comprar y mantener.''}
+
+\slide{6}{Conexión con el Monte Carlo clásico}{25}{%
+``La respuesta está en Monte Carlo. Si simulamos $n$ trayectorias de precios
+tomando la acción $a$, la media de los retornos converge casi seguro a la
+esperanza real por la Ley de los Grandes Números ---
+en MCTS, $Q(a)/N(a)$ es exactamente ese estimador.
+Además, por el TCL el error decae como $N^{-1/2}$: doblar la precisión
+requiere cuadruplicar las simulaciones} %, de ahí las 5.000 iteraciones.''}
+
+\slide{7}{Objetivos}{10}{%
+``El trabajo tiene tres objetivos: formalizar el problema como MDP,
+implementar el algoritmo MCTS, y compararlo contra Buy \& Hold.''}
+
+\slide{9}{Proceso de Decisión de Markov}{30}{%
+``Formalizamos el problema como un Proceso de Decisión de Markov:
+cuádrupla de estados, acciones, transiciones y recompensas.
+La propiedad de Markov dice que el futuro depende solo del estado actual.
+La ecuación de Bellman dice que la acción óptima en cada sesión es la que
+maximiza la recompensa inmediata más el valor esperado del estado siguiente
+--- pero resolverla directamente es inviable: la distribución de transición
+es desconocida y el espacio de estados es continuo.
+MCTS la esquiva muestreando esa distribución implícitamente mediante
+rollouts GBM: $Q(a)/N(a)$ estima $V^*(s_t)$ para cada acción sin necesidad
+de conocer $P$ explícitamente.
+Esto ocurre una vez por sesión bursátil --- 506 veces en total.
+(La propiedad de Markov significa que para predecir el futuro basta saber
+dónde estás ahora y qué decides hacer --- por eso el estado incluye MA20
+y RSI: son un resumen del pasado que hace el problema Markoviano.)''}
+
+
+\slide{10}{El MDP del trading sobre TSLA}{20}{%
+``En nuestro caso el estado recoge el precio, la cartera y dos indicadores
+técnicos. Hay 11 acciones discretas, de comprar el 100\,\% al efectivo hasta
+vender el 100\,\%. La recompensa es el log-retorno relativo a Buy \& Hold ---
+si el mercado sube un 5\,\% y el agente solo sube un 3\,\%, la recompensa
+es negativa.''}
+
+\slide{11}{Los 4 pasos del MCTS}{25}{%
+``El algoritmo repite cuatro pasos:
+\textbf{Selección} --- UCB1 baja por el árbol hasta una hoja prometedora.
+\textbf{Expansión} --- añade un nodo nuevo con contadores $N$ y $Q$.
+\textbf{Rollout} --- simula el futuro con GBM durante 60 días y obtiene un
+retorno.
+\textbf{Retropropagación} --- sube ese retorno actualizando todos los nodos
+del camino.
+Tras 5.000 iteraciones se elige la acción más visitada.''}
+
+\slide{12}{Selección: UCB1}{20}{%
+``UCB1 suma un término de explotación --- la media de retornos observada ---
+y un término de exploración que crece cuando una acción ha sido poco visitada.
+Esto garantiza que toda acción se visita infinitas veces, condición necesaria
+para aplicar la LLN.
+Es análogo a Gauss-Seidel: actualiza una sola componente por iteración.''}
+
+\slide{13}{Rollout: GBM}{15}{%
+``Para simular el futuro usamos el Movimiento Browniano Geométrico.
+Tiene solución analítica exacta vía Itô: solo hay que muestrear una normal
+estándar por paso, sin error de discretización.
+Los parámetros se recalibran cada día con los últimos 60 días de datos.''}
+
+\slide{14}{Señales sobre el precio}{15}{%
+``Aquí vemos el precio de TSLA con las señales de compra y venta del agente.
+En el tramo bajista predominan las ventas; en el alcista, las compras.
+La política se adapta al régimen del mercado.''}
+
+\slide{15}{Cartera base 100}{15}{%
+``Este es el efecto en la cartera.
+MCTS sale al efectivo antes de la corrección del 75\,\% y preserva el
+capital, mientras Buy \& Hold cae con el mercado.''}
+
+\slide{16}{Ventaja relativa: Alfa}{15}{%
+``El alfa mide el exceso de retorno sobre B\&H día a día.
+Pico de casi $+80\,\%$ tras el mínimo de la corrección.
+La tendencia es creciente: la ventaja se acumula.''}
+
+\slide{17}{Exposición por intensidad}{10}{%
+``Las señales diferenciadas por intensidad revelan que predominan las
+operaciones extremas --- comprar o vender el 100\,\%.
+Las posiciones intermedias son minoritarias.''}
+
+\slide{18}{Exposición dinámica al activo}{15}{%
+``Esto se confirma aquí: el ratio de exposición pasa casi todo el tiempo
+en 0 o en 1, nunca en valores intermedios.
+MCTS aprendió una política todo-o-nada con exposición media del 60\,\%.''}
+
+\slide{19}{Convergencia UCB1}{15}{%
+``Esta gráfica cierra el argumento teórico.
+$Q(a)/N(a)$ se estabiliza hacia las 500 iteraciones para cada acción,
+y la envolvente decrece como $N^{-1/2}$ --- validando experimentalmente
+la cota del estimador de Monte Carlo.''}
+
+\slide{20}{Métricas comparativas}{20}{%
+``En números: ROI del 240\,\% frente al 100\,\% de B\&H, y drawdown máximo
+del $-10\,\%$ frente al $-75\,\%$.
+La tensión honesta: el Sharpe de MCTS es inferior, 1.56 frente a 1.93,
+porque la política todo-o-nada genera más volatilidad diaria.''}
+
+\slide{21}{Limitaciones del modelo}{15}{%
+``Dos limitaciones.
+Primera: el GBM tiene colas ligeras y subestima crashes extremos.
+Segunda: los resultados son específicos de este periodo y activo --- falta
+validación cruzada.''}
+
+\slide{22}{Conclusiones}{15}{%
+``En resumen: $Q/N$ es Monte Carlo clásico, converge por la LLN con error
+$\mathcal{O}(N^{-1/2})$.
+Y lo más interesante: MCTS aprendió por sí solo una política todo-o-nada,
+lo que sugiere que las posiciones intermedias no aportan ventaja bajo una
+recompensa relativa a B\&H.''}
+
+% ----------------------------------------------------------------------------
+\subsection*{Apéndice: cómo explicar la ecuación de Bellman (diap.\ 9)}
+% ----------------------------------------------------------------------------
+
+\noindent
+Si alguien pregunta qué representa la ecuación o quieres introducirla
+brevemente, usa esta explicación en lenguaje llano:
+
+\begin{itemize}\setlength{\itemsep}{2pt}
+  \item $V^*(s)$ --- \emph{cuánto vale estar ahora en el estado $s$ si
+        juegas perfectamente a partir de aquí.}
+  \item $\max_a$ --- \emph{eliges la mejor acción posible.}
+  \item $R(s,a)$ --- \emph{lo que ganas ahora mismo con esa acción.}
+  \item $\gamma\sum_{s'}P(s'|s,a)\,V^*(s')$ --- \emph{el valor esperado
+        del estado al que llegas, descontado porque el futuro vale un
+        poco menos que el presente.}
+\end{itemize}
+
+\medskip
+\noindent\textbf{Frase para decir en la exposición:}
+
+\medskip
+\noindent\textit{``La ecuación de Bellman captura una idea muy intuitiva:
+el valor de una situación es la mejor recompensa que puedo obtener ahora
+más el valor esperado de la situación a la que llego.
+Si consigo resolver esa ecuación para todos los estados a la vez, tengo
+la política óptima.
+El problema es que en trading los estados son continuos e infinitos ---
+no puedo resolverla directamente, y ahí entra MCTS: la estima estado
+por estado mediante simulación.''}
+
+\medskip
+\noindent\textbf{Si preguntan por qué Bellman da la política óptima:}
+
+\medskip
+\noindent\textit{``Es el principio de optimalidad: una política óptima
+tiene la propiedad de que, sea cual sea el estado inicial y la primera
+decisión, las decisiones restantes deben formar a su vez una política
+óptima para el subproblema que queda.
+Si $\pi^*$ no maximizara la expresión en algún estado, podría mejorarse
+localmente --- contradicción con que era óptima.''}
+
+\bigskip
+\noindent\textit{Total estimado: $\approx 300$\,s $= 5$\,min.
+Si vas justo, recorta la diapositiva 6 a:
+``$Q(a)/N(a)$ es el estimador de Monte Carlo; converge por la LLN con
+error $\mathcal{O}(N^{-1/2})$, de ahí las 5.000 iteraciones.''}
+
+\newpage
+
+% ============================================================================
+\section{Monte Carlo clásico y convergencia}
+% ============================================================================
+
+\preg{1}{¿Qué significa exactamente ``c.s.'' (casi seguro) y por qué no
+basta con decir ``tiende a la esperanza''? \hfill$\bigstar\bigstar\bigstar$}
+\resp{%
+``Casi seguro'' significa
+$\mathbb{P}\bigl(\lim_{n\to\infty}\widehat I_n = \mu\bigr)=1$:
+es convergencia puntual de la sucesión de variables aleatorias, no solo
+en probabilidad. Existe un conjunto de trayectorias de medida nula donde
+puede fallar; en el resto, converge. Es la conclusión de la LLN fuerte
+(cf.\ \texttt{montecarlo.pdf}).}
+
+\preg{2}{¿Por qué en el estimador del Tema 9 aparece el factor $v$ (volumen)
+y aquí parece que no? \hfill$\bigstar\bigstar\bigstar$}
+\resp{%
+En integración Monte Carlo $\int_D f = v\cdot\mathbb{E}[f(X)]$ con
+$X\sim\text{Unif}(D)$. En MCTS estimamos directamente una esperanza
+$\mathbb{E}[R_T\mid s,a]$, no una integral con dominio acotado, así que
+$v=1$ implícitamente.}
+
+\preg{3}{¿Estás usando la LLN fuerte o la débil? ¿Por qué importa la
+distinción? \hfill$\bigstar\bigstar$}
+\resp{%
+La \textbf{fuerte} (convergencia c.s.). Garantiza que cada trayectoria del
+algoritmo converge, no solo ``con probabilidad alta para $n$ grande''.
+La débil bastaría para un resultado puntual, pero la fuerte es el
+estándar en Monte Carlo.}
+
+\preg{4}{La cota $\mathcal{O}(n^{-1/2})$: ¿asintótica vía TCL o válida para
+$n$ finito (Chebyshev/Hoeffding)? \hfill$\bigstar\bigstar$}
+\resp{%
+Vía TCL es \textbf{asintótica} (intervalo $z_{\alpha/2}\sigma/\sqrt{n}$
+para $n$ grande). Para $n$ finito existen cotas tipo Hoeffding/Chebyshev
+del mismo orden $n^{-1/2}$ pero con peores constantes. La diapositiva 6
+usa la versión TCL.}
+
+\preg{5}{¿Las muestras son realmente i.i.d.? Distintos rollouts comparten
+árbol y la selección no es uniforme. \hfill$\bigstar\bigstar$}
+\resp{%
+Sí, condicionalmente: los rollouts desde una acción \textbf{fija} $a$ en la
+raíz son i.i.d., porque el GBM se simula independientemente con los mismos
+parámetros $(\hat\mu,\hat\sigma)$. La mezcla entre acciones no lo es,
+pero $Q(a)/N(a)$ solo promedia dentro de cada acción.}
+
+\preg{6}{Si el rollout devuelve un retorno acotado, ¿no se obtienen cotas
+más fuertes que las del TCL? \hfill$\bigstar$}
+\resp{%
+Sí: el log-retorno relativo está acotado en la práctica, así que aplicaría
+Hoeffding (decay subgaussiano). No lo usamos porque la cota TCL ya es
+suficientemente ajustada y conecta con el formalismo del Tema 9.}
+
+% ============================================================================
+\section{MCTS y UCB1}
+% ============================================================================
+
+\preg{7}{¿De dónde sale el $\sqrt{2}$ en UCB1? ¿Por qué no otro valor?
+\hfill$\bigstar\bigstar\bigstar$}
+\resp{%
+Sale de la demostración de Auer, Cesa-Bianchi \& Fischer (2002): es el valor
+que minimiza el regret asintótico bajo Hoeffding cuando los retornos están
+en $[0,1]$. Es óptimo solo bajo esa hipótesis; en la práctica se ajusta
+como hiperparámetro $c$.}
+
+\preg{8}{¿Por qué eligen \emph{max-visits} y no \emph{max-Q/N}? Si la
+verdadera utilidad es la media, ¿no debería ser esa?
+\hfill$\bigstar\bigstar\bigstar$}
+\resp{%
+Una acción con $Q/N$ alto y $N$ pequeño tiene error estándar $\sigma/\sqrt N$
+enorme: puede ser ruido. Max-visits es robusta porque UCB1 \emph{solo
+visita mucho} aquello que se ha vuelto a confirmar varias veces
+(diapositiva~14).}
+
+\preg{9}{¿Qué garantiza que el árbol no crezca sin control? ¿Cuál es el
+coste por iteración? \hfill$\bigstar\bigstar$}
+\resp{%
+El árbol crece $O(\text{iter})$ nodos por decisión (un nodo nuevo por
+iteración). Coste por iteración: $O(d)$ con $d$ profundidad de descenso
+$+\;O(H)$ del rollout. En este trabajo: $5\,000\times{\sim}60\approx
+3\cdot 10^5$ pasos GBM por decisión.}
+
+\preg{10}{Si dos acciones tienen valor verdadero muy parecido, ¿UCB1 las
+distingue alguna vez o oscila? \hfill$\bigstar\bigstar$}
+\resp{%
+UCB1 las visita alternativamente con frecuencia similar; el \emph{regret}
+crece $O(\log n)$ pero la decisión final puede oscilar. Es un caso conocido
+de acciones \emph{near-optimal}.
+
+\smallskip
+\noindent\textbf{¿Qué es el regret?} En teoría de \emph{multi-armed bandits},
+el \emph{regret} (arrepentimiento) tras $n$ tiradas es la pérdida acumulada
+respecto a haber jugado siempre la mejor acción $a^*$:
+\[
+  R_n \;=\; n\,\mu^* \;-\; \mathbb{E}\!\left[\sum_{t=1}^{n} X_t\right]
+       \;=\; \sum_{a\neq a^*}\!\Delta_a\,\mathbb{E}[N_n(a)],
+  \qquad \Delta_a = \mu^* - \mu_a.
+\]
+Mide cuánto se ha ``perdido'' por explorar acciones subóptimas. UCB1
+garantiza $R_n = O(\log n)$, que es el orden óptimo (cota inferior de
+Lai--Robbins). Si dos acciones tienen $\Delta_a$ pequeño, el regret sigue
+siendo bajo en valor absoluto aunque la frecuencia de ``error'' sea alta:
+por eso la decisión final puede oscilar sin que el algoritmo esté
+funcionando mal.}
+
+\preg{11}{¿Es UCB1 óptimo? ¿Hay alternativas (UCB-V, Thompson sampling) y
+por qué no usarlas? \hfill$\bigstar\bigstar$}
+\resp{%
+No es óptimo en sentido de regret finito; sí asintóticamente. Alternativas
+(Thompson sampling, KL-UCB) suelen tener mejores constantes. No se usan
+aquí por simplicidad y por mantener transparente la conexión con la LLN
+del Tema 9.}
+
+\preg{12}{En la retropropagación se acumula $Q(s,a)\mathrel{+}=X$ y se
+reporta la \textbf{media} $Q/N$. ¿Qué pasaría si en lugar de promediar
+guardáramos el \textbf{máximo} retorno observado, $Q(s,a)\leftarrow
+\max\{Q(s,a),X\}$, y eligiéramos por max en cada nodo (variante
+\emph{minimax} / \emph{best-of}) ? \hfill$\bigstar$}
+\resp{%
+Esa variante sí se usa, pero en un contexto distinto: el MCTS clásico
+para \textbf{juegos deterministas con adversario} (Go, ajedrez, estilo
+AlphaGo). Allí no hay azar en las transiciones: el rollout devuelve un
+valor reproducible y tiene sentido propagar el máximo (o min/max
+alternados, según jugador) porque corresponde a la ecuación de Bellman
+determinista
+$V^*(s)=\max_a [R(s,a)+V^*(s')]$.
+
+\smallskip
+En nuestro problema el entorno es \textbf{estocástico}: el mismo
+$(s,a)$ produce retornos diferentes en cada rollout porque el GBM
+muestrea $Z\sim\mathcal{N}(0,1)$ distinto cada vez. Si guardáramos el
+máximo:
+\begin{itemize}\setlength{\itemsep}{0pt}
+  \item perdemos la interpretación de $Q/N$ como estimador de Monte Carlo
+        por media muestral, y con ella la garantía
+        $Q/N \xrightarrow{\text{c.s.}} \mathbb{E}[R_T\mid s,a]$ por la LLN
+        (todo el argumento del Tema 9 deja de aplicar);
+  \item el estadístico $\max_k X_k$ es \emph{sesgado al alza} y no
+        converge a la esperanza, sino al supremo esencial de la
+        distribución --- un valor que mezcla señal y ruido extremo;
+  \item el agente se volvería ``optimista patológico'': preferiría
+        acciones cuya cola derecha es gruesa aunque su retorno medio sea
+        peor, lo contrario de lo que queremos en gestión de riesgo.
+\end{itemize}
+
+\smallskip
+La elección entre \emph{average backup} (lo que hacemos) y \emph{max
+backup} es, por tanto, una decisión de modelado guiada por la
+naturaleza del entorno: estocástico $\Rightarrow$ media; determinista
+con adversario $\Rightarrow$ máximo. Existen híbridos
+(\emph{Bellman backups}, \emph{MCTS-Solver}) que combinan ambos cuando
+hay nodos terminales seguros, pero quedan fuera del alcance del
+trabajo.}
+
+% ============================================================================
+\section{Conexión con métodos iterativos (Tema 6)}
+% ============================================================================
+
+\preg{13}{La analogía con Gauss--Seidel suena bien, pero aquí no hay sistema
+$Ax=b$. ¿Qué juega el papel de $A$ y de $b$?
+\hfill$\bigstar\bigstar\bigstar$}
+\resp{%
+Es analogía, no equivalencia formal. El ``punto fijo'' es
+$q^*(a)=\mathbb{E}[R_T\mid s,a]$ y la iteración es
+\[
+  q^{(k+1)}(a) = (1-\alpha_k)\,q^{(k)}(a) + \alpha_k X_{k+1},
+  \qquad \alpha_k = \tfrac{1}{N^{(k)}(a)+1}.
+\]
+con:
+\begin{itemize}\setlength{\itemsep}{0pt}
+  \item $a\in\mathcal{A}$ --- acción del MDP cuyo valor estamos estimando.
+  \item $q^{(k)}(a)=Q^{(k)}(s,a)/N^{(k)}(s,a)$ --- iterado $k$-ésimo, la
+        media muestral de los retornos observados para $a$ tras $k$
+        rollouts (análogo del $x^{(k)}$ de Gauss--Seidel).
+  \item $q^*(a)=\mathbb{E}[R_T\mid s,a]$ --- valor verdadero de la acción,
+        el ``punto fijo'' al que converge $q^{(k)}$ por la LLN
+        (análogo de la solución $x^*$ del sistema lineal).
+  \item $X_{k+1}$ --- retorno terminal del $(k{+}1)$-ésimo rollout,
+        v.a.\ con $\mathbb{E}[X_{k+1}]=q^*(a)$ (análogo estocástico del
+        término independiente $b$).
+  \item $N^{(k)}(a)$ --- número de visitas a la acción $a$ tras $k$
+        iteraciones (contador del MCTS).
+  \item $\alpha_k=1/(N^{(k)}(a)+1)\in(0,1]$ --- tamaño de paso de la
+        recurrencia; juega el papel del coeficiente de la ``matriz de
+        iteración'' (escalar aquí).
+\end{itemize}
+El ``$b$'' es estocástico ($X_{k+1}$); la ``matriz de iteración'' es escalar
+$1-\alpha_k$. No hay $Ax=b$ literal (informe \S3).}
+
+\preg{14}{¿Hay un radio espectral $\rho(Q)<1$ o es analogía suelta?
+\hfill$\bigstar\bigstar$}
+\resp{%
+Aquí ``$Q$'' se reduce a $|1-\alpha_k|<1$, trivialmente cierto porque
+$\alpha_k=1/(N+1)\in(0,1]$. No es radio espectral en sentido estricto.}
+
+\preg{15}{¿Por qué Gauss--Seidel y no Jacobi? ¿Qué sería el ``Jacobi del
+MCTS''? \hfill$\bigstar\bigstar$}
+\resp{%
+\textbf{Por qué MCTS+UCB1 es de tipo Gauss--Seidel.}
+La distinción clave entre ambos métodos del Tema 6 es el momento en que
+se usa cada actualización:
+\begin{itemize}\setlength{\itemsep}{0pt}
+  \item \emph{Jacobi} actualiza todas las componentes $x_j^{(k+1)}$ usando
+        \textbf{solo valores del paso anterior} $x^{(k)}$: las
+        componentes se calculan en paralelo y los nuevos valores no se
+        ven entre sí hasta el paso $k{+}2$.
+  \item \emph{Gauss--Seidel} actualiza una componente a la vez y, al
+        calcular $x_j^{(k+1)}$, usa \textbf{ya los valores recién
+        actualizados} $x_1^{(k+1)},\dots,x_{j-1}^{(k+1)}$ (en lugar de
+        sus versiones antiguas).
+\end{itemize}
+MCTS con UCB1 sigue exactamente este patrón sobre el vector
+$q^{(k)}=(q^{(k)}(a))_{a\in\mathcal{A}}$:
+\begin{enumerate}\setlength{\itemsep}{0pt}
+  \item En cada iteración se actualiza \textbf{una sola componente}
+        $q^{(k+1)}(a^*)$ --- la de la acción $a^*$ que ha elegido UCB1.
+        El resto de componentes $q^{(k+1)}(a)=q^{(k)}(a)$ permanecen
+        intactas.
+  \item En la iteración siguiente, UCB1 elige $a^{**}$ \textbf{ya con la
+        información actualizada}: la nueva $Q(a^*)/N(a^*)$ y el nuevo
+        $N(a^*)$ entran inmediatamente en el cómputo de la fórmula
+        $Q/N + c\sqrt{\ln N(s)/N(a)}$, no en una iteración futura.
+\end{enumerate}
+La diferencia con Gauss--Seidel clásico es que el orden de actualización
+no es cíclico fijo ($a_1, a_2, \dots, a_{|\mathcal{A}|}, a_1, \dots$) sino
+\textbf{adaptativo}: UCB1 decide en cada paso qué componente conviene
+refinar en función de la información acumulada. Por eso decimos que
+MCTS+UCB1 es ``Gauss--Seidel adaptativo'' (diapositiva~10).
+
+\smallskip
+\textbf{Qué sería el ``Jacobi del MCTS''.}
+Lanzar en cada iteración un rollout \textbf{para cada acción} en bloque
+y actualizar todas las $q^{(k+1)}(a)$ a la vez con los retornos del paso
+$k$. Existe en la literatura (\emph{root parallelization}): es trivial
+de paralelizar, pero no aprovecha la información cruzada que aporta UCB1
+(no concentra el presupuesto de iteraciones en las acciones más
+prometedoras), por lo que converge peor a igual número de rollouts
+totales.}
+
+\preg{16}{El parámetro $c=\sqrt{2}$ de UCB, ¿juega el papel del $\omega$
+de SOR? ¿Existe $c^*$ análogo a $\omega^*$? \hfill$\bigstar$}
+\resp{%
+Sí, juega un papel análogo: $c$ pequeño $\to$ explotación (sub-relajación);
+$c$ grande $\to$ exploración (sobre-relajación). Existe un $c^*$ empírico
+pero no hay fórmula cerrada como
+$\omega^*=2/(1+\sqrt{1-\rho^2})$.}
+
+% ============================================================================
+\section{MDP y modelado del problema}
+% ============================================================================
+
+\preg{17}{¿De verdad el problema cumple Markov? El precio futuro depende
+del histórico (volatilidad, momentum). \hfill$\bigstar\bigstar\bigstar$}
+\resp{%
+No estrictamente. Lo arreglamos enriqueciendo el estado con $\mathrm{MA}_{20}$
+y $\mathrm{RSI}_{14}$, que codifican el pasado reciente. Es Markov
+\textbf{respecto al estado aumentado}, no respecto al precio solo.}
+
+\preg{18}{¿Por qué la recompensa es relativa a B\&H y no log-retorno
+absoluto? \hfill$\bigstar\bigstar\bigstar$}
+\resp{%
+Para que el agente compita explícitamente con B\&H. Con recompensa absoluta,
+``no hacer nada'' en mercado alcista parecería buena (sube). La relativa
+penaliza el coste de oportunidad (diapositiva~8 / informe~\S4).}
+
+\preg{19}{¿Por qué solo 11 acciones discretas y no espacio continuo?
+\hfill$\bigstar\bigstar$}
+\resp{%
+MCTS necesita árbol finito para que UCB1 visite cada rama infinitas veces.
+Espacio continuo requeriría variantes (HOO, \emph{progressive widening})
+fuera del alcance del trabajo.}
+
+\preg{20}{El estado incluye RSI y MA20: ¿no es \emph{feature engineering}
+arbitrario? \hfill$\bigstar\bigstar$}
+\resp{%
+Sí. Sin ellos la política sigue funcionando peor pero supera a B\&H;
+el trabajo no incluye \emph{ablation} sistemático (limitación L2).}
+
+\preg{21}{¿No deberíais descontar ($\gamma$) las recompensas futuras?
+\hfill$\bigstar$}
+\resp{%
+Horizonte fijo $H=60$ días con $\gamma=1$ es estándar para problemas
+episódicos cortos. La recompensa es solo terminal, así que $\gamma$ solo
+cambiaría escala.}
+
+% ============================================================================
+\section{GBM y modelo de precios}
+% ============================================================================
+
+\preg{22}{El GBM supone log-retornos gaussianos, pero los reales tienen
+colas pesadas. ¿Hasta qué punto invalida los rollouts?
+\hfill$\bigstar\bigstar\bigstar$}
+\resp{%
+Es la limitación L1: el GBM infraestima crashes. En el backtest la
+corrección $-75\%$ ocurrió pese al modelo, y el agente la gestiona porque
+la calibración rolling sube $\hat\sigma$ y tira a efectivo. La garantía
+teórica del rollout sí queda comprometida.}
+
+\preg{23}{¿Por qué habéis usado GBM y no otro modelo de precios?
+\hfill$\bigstar\bigstar\bigstar$}
+\resp{%
+El GBM es el modelo \textbf{más simple} que cumple las tres propiedades
+mínimas que necesita el rollout del MCTS:
+
+\begin{itemize}\setlength{\itemsep}{0pt}
+  \item \textbf{Precios siempre positivos.} Al partir de
+        $dS_t = \mu S_t\,dt + \sigma S_t\,dW_t$, la solución
+        $S_{t+h}=S_t\exp(\cdots)$ es estrictamente positiva por
+        construcción --- coherente con la realidad del mercado.
+  \item \textbf{Log-retornos estacionarios y gaussianos.}
+        Bajo el modelo, $\ln(S_{t+h}/S_t)\sim
+        \mathcal{N}\bigl((\mu-\sigma^2/2)h,\sigma^2 h\bigr)$. Esto
+        permite calibrar $\hat\mu$ y $\hat\sigma$ por máxima
+        verosimilitud (media y varianza muestrales de los log-retornos)
+        en una ventana corta y reciente.
+  \item \textbf{Solución analítica exacta vía Itô.}
+        $S_{t+h}=S_t\exp((\mu-\sigma^2/2)h+\sigma\sqrt h\,Z)$ con
+        $Z\sim\mathcal N(0,1)$. Solo hace falta muestrear un escalar
+        $Z$ por paso --- no se integra una SDE (\emph{Stochastic
+        Differential Equation}, ecuación diferencial estocástica)
+        numéricamente, así que
+        \textbf{no hay error de discretización} (a diferencia de
+        Euler--Maruyama). Esto es crítico cuando el rollout simula 60
+        pasos por iteración y se ejecuta 5\,000 veces por decisión:
+        evita que el ruido de discretización contamine la estimación de
+        $Q/N$.
+\end{itemize}
+
+\smallskip
+\textbf{Comparación con alternativas más realistas:}
+
+\begin{itemize}\setlength{\itemsep}{0pt}
+  \item \emph{Merton (GBM + saltos de Poisson)}: añade colas pesadas y
+        \emph{crashes}. Más fiel a los retornos reales, pero introduce
+        $\geq 3$ parámetros adicionales (intensidad y ley de los saltos)
+        que requieren ventanas de calibración mucho más largas para ser
+        estables.
+  \item \emph{Heston (volatilidad estocástica)}: $\sigma_t$ es ella misma
+        un proceso. Captura el \emph{volatility clustering} que se
+        observa en TSLA, pero es una SDE de dos dimensiones sin solución
+        analítica cerrada para el precio: obliga a Euler--Maruyama.
+  \item \emph{GARCH(1,1)}: tiempo discreto, modela varianza condicional.
+        Es la opción ``natural'' a frecuencia diaria, pero no encaja
+        limpiamente con el formalismo del MDP de tiempo continuo que
+        usamos.
+\end{itemize}
+
+\smallskip
+\textbf{Conclusión.} GBM es la elección que minimiza la complejidad del
+rollout (un único $Z$ por paso, sin error de discretización) y que mejor
+conecta el trabajo con el contenido del curso (lema de Itô y Monte Carlo
+del Tema 9). El precio a pagar son las colas ligeras, que reconocemos
+como limitación L1 y dejamos como extensión natural en forma de modelo
+de Merton.}
+
+\preg{24}{¿Cómo se calibran $\hat\mu$ y $\hat\sigma$? ¿Por qué ventana
+de 60 días? \hfill$\bigstar\bigstar$}
+\resp{%
+Compromiso clásico: corta $\to$ sigue régimen pero ruidosa; larga $\to$
+estable pero lenta. 60 días $\approx$ 3 meses, robusto frente a
+estacionalidad semanal/mensual. No optimizado.}
+
+\preg{25}{¿$\hat\mu$ con 60 datos no es enormemente ruidoso? El error
+estándar de la deriva es brutal. \hfill$\bigstar\bigstar$}
+\resp{%
+Cierto: error estándar $\hat\sigma/\sqrt{60}\approx \sigma/8$, comparable
+a $\mu$. Por eso \emph{Common Random Numbers} con $Z$ compartido es tan
+importante: el ruido de $\hat\mu$ se cancela al comparar agente vs.\ B\&H
+bajo la misma trayectoria.}
+
+\preg{26}{¿Habéis comprobado normalidad de los log-retornos?
+\hfill$\bigstar$}
+\resp{%
+El informe muestra QQ-plot: colas más pesadas que la normal
+(kurtosis~$\approx 5$). Limitación L1.}
+
+\preg{27}{Si la solución es exacta, ¿por qué se llama ``Monte Carlo''?
+\hfill$\bigstar$}
+\resp{%
+Porque lo aleatorio es $Z\sim\mathcal{N}(0,1)$, que es exactamente lo que
+se simula. La ``solución exacta'' se refiere a la SDE (no requiere
+Euler--Maruyama), no al precio futuro.}
+
+% ============================================================================
+\section{Resultados y validez experimental}
+% ============================================================================
+
+\preg{28}{$+240\%$ vs.\ $+100\%$: ¿no es sospechoso? ¿No habrá sobreajuste
+de hiperparámetros? \hfill$\bigstar\bigstar\bigstar$}
+\resp{%
+Riesgo real (limitación L2). No hubo \emph{grid search} sobre el período
+test, pero los hiperparámetros (5\,000, 60, 60) se fijaron a priori,
+no tras ver resultados. Falta evaluación out-of-sample formal.}
+
+\preg{29}{Una sola semilla, un activo, un período. ¿Qué confianza
+estadística tiene esto? \hfill$\bigstar\bigstar\bigstar$}
+\resp{%
+El informe v2 incluye distribución de retornos sobre 100 semillas
+(figura \texttt{mcts\_violin\_retornos}) que sí cuantifica varianza,
+pero no entró en la presentación. Comparación rigurosa requeriría más
+activos y validación cruzada temporal.}
+
+\preg{30}{Sharpe $1{,}56 < 1{,}93$: ¿no es ese el ratio que importa al
+inversor? \hfill$\bigstar\bigstar$}
+\resp{%
+Honestamente, sí. Defensa: el drawdown $-10\%$ es preferible al $-75\%$
+para un inversor real con horizonte vital finito (Sharpe penaliza por
+igual volatilidad al alza y a la baja). \textbf{Sortino} sería más justo.}
+
+\preg{31}{¿Otros benchmarks (rebalanceo, momentum simple)?
+\hfill$\bigstar\bigstar$}
+\resp{%
+No probados. Limitación reconocida; B\&H es el benchmark estándar pero
+laxo.}
+
+\preg{32}{¿Costes de transacción, slippage, impuestos? \hfill$\bigstar\bigstar$}
+\resp{%
+No incluidos. Una política bang-bang con muchas operaciones grandes
+implica que con comisiones realistas ($\sim$5~bps) el alfa caería
+notablemente. Discutido en informe~\S6.}
+
+\preg{33}{¿La política reacciona o ``huele'' la corrección por la
+calibración? \hfill$\bigstar$}
+\resp{%
+El GBM rolling captura cambios de régimen (vol sube $\to$ rollouts más
+dispersos $\to$ MCTS prefiere efectivo). No es información futura, pero
+le da reflejos. Reproducible con otras semillas.}
+
+% ============================================================================
+\section{Implementación y reproducibilidad}
+% ============================================================================
+
+\preg{34}{¿Cuánto tarda una decisión? \hfill$\bigstar\bigstar$}
+\resp{%
+${\sim}2$--$3$~s en CPU estándar para 5\,000 iter $\times$ 60 días.
+Backtest completo (506 días): ${\sim}25$~min.}
+
+\preg{35}{¿Cómo se paraleliza? \hfill$\bigstar\bigstar$}
+\resp{%
+Trivial a nivel de rollouts (\emph{root-parallel}, \emph{leaf-parallel}).
+No implementado: ejecución secuencial vectorizada con NumPy.}
+
+\preg{36}{¿Por qué Python y no Cython/C++? \hfill$\bigstar$}
+\resp{%
+Suficiente: los 60 pasos GBM están vectorizados con NumPy. Cuello de
+botella: descenso por el árbol (Python puro). Cython aceleraría
+${\sim}5\times$.}
+
+\preg{37}{¿La semilla 42 cambia mucho los resultados frente a otras?
+\hfill$\bigstar$}
+\resp{%
+Sobre 100 semillas (informe v2): ROI medio $+180\%$, desviación
+$\pm 60\%$. La semilla 42 está cerca de la mediana; no es \emph{cherry
+picking} extremo.}
+
+% ============================================================================
+\section{Teoría más profunda}
+% ============================================================================
+
+\preg{38}{¿La política aprendida es $\pi^*$ óptima o solo casi-óptima?
+¿Hay teorema de optimalidad? \hfill$\bigstar\bigstar$}
+\resp{%
+Casi-óptima asintóticamente: Kocsis \& Szepesvári (2006) prueban que el
+regret de UCT es $O(\log n)$ y la política max-visits converge a la
+óptima del MDP. Para $n$ finito, no.}
+
+\preg{39}{La convergencia de $Q/N$ es para acción fija desde la raíz.
+¿Y la del árbol entero? \hfill$\bigstar\bigstar$}
+\resp{%
+Mismo resultado de Kocsis--Szepesvári: en cada nodo del árbol,
+$Q/N\to V^*$ del subárbol bajo UCT. Citado en el informe~\S3.}
+
+\preg{40}{¿Qué pasa si el MDP no es estacionario (mercado cambia de
+régimen)? \hfill$\bigstar$}
+\resp{%
+Formalmente, en cada decisión el MDP interno es estacionario (porque
+$\hat\mu,\hat\sigma$ están fijos para esa decisión). Entre decisiones
+cambia, pero cada problema interno se resuelve en su régimen. No hay
+garantía global.}
+
+\end{document}
+% ============================================================================

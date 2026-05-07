@@ -23,6 +23,19 @@
 \setbeamercolor{block title alerted}{bg=red!70!black, fg=white}
 \setbeamertemplate{blocks}[rounded][shadow=false]
 \setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=.333333\paperwidth,ht=2.25ex,dp=1ex,center]{author in head/foot}%
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.333333\paperwidth,ht=2.25ex,dp=1ex,center]{title in head/foot}%
+      \usebeamerfont{title in head/foot}\insertshorttitle
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.333333\paperwidth,ht=2.25ex,dp=1ex,right]{date in head/foot}%
+      \usebeamerfont{date in head/foot}\insertframenumber{} / \inserttotalframenumber\hspace*{2ex}
+    \end{beamercolorbox}}%
+  \vskip0pt%
+}
 \hypersetup{hidelinks}
 
 
@@ -90,7 +103,7 @@
   Monte Carlo Tree Search\\
   aplicado a decisiones de inversión financiera}
 \subtitle{Un estudio sobre el activo TSLA}
-\author{Héctor Orosa, Sofía Ortiz, Carlos Ruiz}
+\author[]{Héctor Orosa, Sofía Ortiz, Carlos Ruiz}
 \institute{%
   Universitdad de Valencia\\
   Métodos Numéricos}
@@ -182,21 +195,15 @@
 % ---------------------------------------------------------------------------
 \begin{frame}{Objetivos del trabajo}
   \begin{enumerate}
-    \item[\textbf{O1}] \textbf{Formalizar} el problema de trading como un
-      Proceso de Decisión de Markov (MDP) con espacio de acciones discreto.
-    \vspace{0.15cm}
-    \item[\textbf{O2}] \textbf{Implementar} el algoritmo MCTS con política UCB1
-      y rollouts generados mediante Movimiento Browniano Geométrico (GBM)
-      calibrado sobre ventana móvil.
-    \vspace{0.15cm}
-    \item[\textbf{O3}] \textbf{Demostrar} que la convergencia se apoya en la
-      LLN y en la cota de error $\mathcal{O}(n^{-1/2})$.
-    \vspace{0.15cm}
-    \item[\textbf{O4}] \textbf{Comparar} MCTS con Buy \& Hold mediante ROI,
-      Sharpe, alfa y drawdown.
-    \vspace{0.15cm}
-    \item[\textbf{O5}] \textbf{Validar} experimentalmente la cota
-      $\mathcal{O}(n^{-1/2})$ observando la convergencia del árbol.
+    \item[\textbf{O1}] \textbf{Formalizar} — el problema de trading como MDP
+    \vspace{0.2cm}
+    \item[\textbf{O2}] \textbf{Implementar} — MCTS con UCB1 y rollouts GBM
+    \vspace{0.2cm}
+   % \item[\textbf{O3}] \textbf{Demostrar} — convergencia c.s.\ y cota $\mathcal{O}(n^{-1/2})$
+    %\vspace{0.2cm}
+    \item[\textbf{O4}] \textbf{Comparar} — MCTS vs.\ Buy \& Hold
+    %\vspace{0.2cm}
+    %\item[\textbf{O5}] \textbf{Validar} — la cota $\mathcal{O}(n^{-1/2})$ experimentalmente
   \end{enumerate}
 \end{frame}
 
@@ -207,42 +214,37 @@
 % ---------------------------------------------------------------------------
 \begin{frame}{Monte Carlo por media muestral}
   \begin{columns}[T]
-    \begin{column}{0.52\textwidth}
+    \begin{column}{0.50\textwidth}
       \begin{block}{Estimador}
         Sea $X$ v.a.\ con $\mathbb{E}[X] = \mu$ finita. Dadas $X_1,\ldots,X_n$
         i.i.d.:
         \[
-          \widehat{I}_n = \frac{v}{n}\sum_{i=1}^n X_i
+          \widehat{I}_n = \frac{v}{n}\sum_{i=1}^n X_i\,\xrightarrow{\ \text{c.s.}\ } v\cdot\mu
+          \quad (n\to\infty,\quad \textcolor{blue}{\text{LLN}})
         \]
         donde $v$ es el volumen del dominio de integración.
-      \end{block}
-      \vspace{0.3cm}
-      \begin{block}{Ley Fuerte de los Grandes Números}
-        \[
-          \widehat{I}_n \xrightarrow{\ \text{c.s.}\ } v\cdot\mu
-          \qquad (n\to\infty)
-        \]
       \end{block}
     \end{column}
     \begin{column}{0.45\textwidth}
       \begin{exampleblock}{Cota de error}
         Por el TCL, para $n$ suficientemente grande:
+        \vspace{2ex}
         \[
           \varepsilon_n
           = \frac{v\,\sigma}{\sqrt{n}}\,z_{\alpha/2}
           = \mathcal{O}(n^{-1/2})
         \]
+        \vspace{2ex}
         donde $\sigma^2 = \mathrm{Var}(X)$.
       \end{exampleblock}
-      \vspace{0.3cm}
-      \begin{alertblock}{Implicación para MCTS}
+    \end{column}
+  \end{columns}
+  \begin{alertblock}{Implicación para MCTS}
         \textbf{Doblar la precisión} requiere \textbf{cuadruplicar}
         las iteraciones. Justifica elegir\\
         \centering
         \texttt{ITERACIONES} $= 5.000$.
       \end{alertblock}
-    \end{column}
-  \end{columns}
 \end{frame}
 
 % ---------------------------------------------------------------------------
@@ -261,24 +263,24 @@
   \end{block}
 
   %\vspace{0.3cm}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \textbf{Política y función de valor:}
-      \[
-        V^\pi(s) = \mathbb{E}_\pi\!\left[
-          \sum_{t\geq 0}\gamma^t R(S_t,A_t)\,\Big|\,S_0=s
-        \right]
-      \]
-    \end{column}
-    \begin{column}{0.48\textwidth}
+%  \begin{columns}[T]
+%    \begin{column}{0.48\textwidth}
+%      \textbf{Política y función de valor:}
+%      \[
+%        V^\pi(s) = \mathbb{E}_\pi\!\left[
+%          \sum_{t\geq 0}\gamma^t R(S_t,A_t)\,\Big|\,S_0=s
+%        \right]
+%      \]
+%    \end{column}
+%    \begin{column}{0.48\textwidth}
       \textbf{Ecuación de Bellman:}
       \[
         V^*(s) = \max_{a\in\mathcal{A}}\!\left\{
           R(s,a) + \gamma\sum_{s'} P(s'|s,a)\,V^*(s')
         \right\}
       \]
-    \end{column}
-  \end{columns}
+%    \end{column}
+%  \end{columns}
 
   %\vspace{0.2cm}
   \begin{alertblock}{}
@@ -387,7 +389,7 @@
 \end{frame}
 
 % ---------------------------------------------------------------------------
-\begin{frame}{UCB1: dilema exploración–explotación}
+\begin{frame}{Selección: UCB1, dilema exploración–explotación}
   \begin{block}{Fórmula UCB1 \footnotesize{(Kocsis \& Szepesvári, 2006)}}
     \[
       a^*_{\text{UCB1}}(s)
@@ -401,21 +403,21 @@
     \]
   \end{block}
 
-  \vspace{0.3cm}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \begin{exampleblock}{Término de explotación}
-        Favorece acciones con \textbf{alta recompensa media} ya observada.
-      \end{exampleblock}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \begin{alertblock}{Término de exploración}
-        Favorece acciones \textbf{poco visitadas}: si $N(s,a)$ se mantiene
-        acotado mientras $N(s)\to\infty$, el término diverge
-        $\to$ toda acción se visita infinitas veces.
-      \end{alertblock}
-    \end{column}
-  \end{columns}
+%  \vspace{0.3cm}
+%  \begin{columns}[T]
+%    \begin{column}{0.48\textwidth}
+%      \begin{exampleblock}{Término de explotación}
+%        Favorece acciones con \textbf{alta recompensa media} ya observada.
+%      \end{exampleblock}
+%    \end{column}
+%    \begin{column}{0.48\textwidth}
+%      \begin{alertblock}{Término de exploración}
+%        Favorece acciones \textbf{poco visitadas}: si $N(s,a)$ se mantiene
+%        acotado mientras $N(s)\to\infty$, el término diverge
+%        $\to$ toda acción se visita infinitas veces.
+%      \end{alertblock}
+%    \end{column}
+%  \end{columns}
 
   \vspace{0.3cm}
   MCTS con UCB1 es un método iterativo tipo \textbf{Gauss–Seidel adaptativo}:
@@ -427,7 +429,7 @@
 %\begin{comment} %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %\end{comment}%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % ---------------------------------------------------------------------------
-\begin{frame}{Movimiento Browniano Geométrico (GBM)}
+\begin{frame}{Rollout: Movimiento Browniano Geométrico (GBM)}
   \textbf{Motor de simulación del rollout.}
   Bajo la hipótesis de log-retornos gaussianos el precio satisface:
   \[
@@ -443,12 +445,8 @@
     \]
     Sin error de discretización (solución analítica, no Euler–Maruyama).
   \end{block}
-\end{frame}
-
-% ---------------------------------------------------------------------------
-
-\begin{frame}
-      \begin{exampleblock}{Calibración rolling}
+  
+        \begin{exampleblock}{Calibración rolling}
         $(\hat\mu,\hat\sigma)$ estimados sobre los últimos
         \texttt{VENTANA\_CALIB}$=60$ días de log-retornos:
         \[
@@ -459,53 +457,87 @@
 \end{frame}
 
 % ---------------------------------------------------------------------------
-\begin{frame}{Convergencia del MCTS}
-  \begin{columns}[T]
-    \begin{column}{0.55\textwidth}
-      \begin{block}{Argumento}
-        Para cada acción $a\in\mathcal{A}$, UCB1 garantiza
-        $N(s_0,a)\to\infty$ conforme el total de iteraciones $n\to\infty$.
-        Por el Corolario de la LLN:
-        \[
-          \frac{Q(s_0,a)}{N(s_0,a)}
-          \;\xrightarrow{\text{c.s.}}\;
-          \mathbb{E}[R_T\mid s_0,a]
-        \]
-      \end{block}
+\begin{comment}
+\begin{frame}{Retropropagación}
+  \begin{block}{Qué ocurre tras cada rollout}
+    El retorno $X$ obtenido se propaga hacia la raíz actualizando cada nodo
+    del camino recorrido:
+    \[
+      Q(s,a) \mathrel{+}= X \qquad N(s,a) \mathrel{+}= 1
+    \]
+  \end{block}
 
-      \vspace{0.1cm}
-      \begin{block}{Error del estimador}
-        Recurrencia lineal con $\alpha_k = 1/(N^{(k)}(a)+1)$:
-        \[
-          q^{(k+1)}(a) = (1-\alpha_k)\,q^{(k)}(a) + \alpha_k X_{k+1}
-        \]
-        La varianza decae: $\mathrm{Var}(e^{(k)}) = \sigma^2(a)/N^{(k)}(a) = \mathcal{O}(N^{-1})$,
-        luego error $= \mathcal{O}(N^{-1/2})$.
-      \end{block}
-    \end{column}
-    \begin{column}{0.42\textwidth}
-      \textbf{MCTS como método iterativo:}
-      \vspace{0.15cm}
+  \vspace{0.4cm}
+  \begin{block}{Interpretación como media acumulada}
+    Equivalentemente, el cociente $Q/N$ sigue la recurrencia:
+    \[
+      q^{(k+1)}(a) = \left(1 - \alpha_k\right)q^{(k)}(a) + \alpha_k\, X_{k+1},
+      \qquad \alpha_k = \frac{1}{N^{(k)}(a)+1}
+    \]
+    Es decir, $q^{(k)}(a) = Q(s,a)/N(s,a)$ es simplemente la \textbf{media
+    muestral} de todos los retornos observados para la acción $a$ hasta la
+    iteración $k$.
+  \end{block}
 
-      \begin{center}
-      \small
-      \begin{tabular}{@{}p{2.8cm}p{2.8cm}@{}}
-        \toprule
-        \textbf{Tema 6} & \textbf{MCTS} \\
-        \midrule
-        Iterado $x^{(k)}$ & $q^{(k)}(a)$ \\
-        Solución $x^*$ & $\mathbb{E}[R_T\mid s_0,a]$ \\
-        Término indep.\ $b$ & Retorno $X_{k+1}$ \\
-        Matriz iteración $Q$ & $1-\alpha_k$ \\
-        $\rho(Q)<1$ & $|1-\alpha_k|<1$ \checkmark \\
-        Gauss–Seidel & MCTS con UCB1 \\
-        Relajación $\omega$ & Exploración $c$ \\
-        \bottomrule
-      \end{tabular}
-      \end{center}
-    \end{column}
-  \end{columns}
+ % \vspace{0.3cm}
+  %\begin{alertblock}{Convergencia}
+  %  UCB1 garantiza que $N(s_0,a)\to\infty$ para \textbf{toda} acción $a$,
+ %   lo que permite aplicar la LLN:
+  %  \[
+  %    \frac{Q(s_0,a)}{N(s_0,a)} \;\xrightarrow{\text{c.s.}}\; \mathbb{E}[R_T\mid s_0,a]
+  %  \]
+%  \end{alertblock}
 \end{frame}
+\end{comment}
+
+% ---------------------------------------------------------------------------
+%\begin{frame}{Convergencia del MCTS}
+%  \begin{columns}[T]
+%    \begin{column}{0.55\textwidth}
+%      \begin{block}{Argumento}
+%        Para cada acción $a\in\mathcal{A}$, UCB1 garantiza
+%        $N(s_0,a)\to\infty$ conforme el total de iteraciones $n\to\infty$.
+%        Por el Corolario de la LLN:
+%        \[
+%          \frac{Q(s_0,a)}{N(s_0,a)}
+%          \;\xrightarrow{\text{c.s.}}\;
+%          \mathbb{E}[R_T\mid s_0,a]
+%        \]
+%      \end{block}
+%
+%      \vspace{0.1cm}
+%      \begin{block}{Error del estimador}
+%        Recurrencia lineal con $\alpha_k = 1/(N^{(k)}(a)+1)$:
+%        \[
+%          q^{(k+1)}(a) = (1-\alpha_k)\,q^{(k)}(a) + \alpha_k X_{k+1}
+%        \]
+%        La varianza decae: $\mathrm{Var}(e^{(k)}) = \sigma^2(a)/N^{(k)}(a) = \mathcal{O}(N^{-1})$,
+%        luego error $= \mathcal{O}(N^{-1/2})$.
+%      \end{block}
+%    \end{column}
+%    \begin{column}{0.42\textwidth}
+%      \textbf{MCTS como método iterativo:}
+%      \vspace{0.15cm}
+%
+%      \begin{center}
+%      \small
+%      \begin{tabular}{@{}p{2.8cm}p{2.8cm}@{}}
+%        \toprule
+%        \textbf{Tema 6} & \textbf{MCTS} \\
+%        \midrule
+%        Iterado $x^{(k)}$ & $q^{(k)}(a)$ \\
+%        Solución $x^*$ & $\mathbb{E}[R_T\mid s_0,a]$ \\
+%        Término indep.\ $b$ & Retorno $X_{k+1}$ \\
+%        Matriz iteración $Q$ & $1-\alpha_k$ \\
+%        $\rho(Q)<1$ & $|1-\alpha_k|<1$ \checkmark \\
+%        Gauss–Seidel & MCTS con UCB1 \\
+%        Relajación $\omega$ & Exploración $c$ \\
+%        \bottomrule
+%      \end{tabular}
+%      \end{center}
+%    \end{column}
+%  \end{columns}
+%\end{frame}
 
 % ============================================================================
 \section{Implementación en Python}
@@ -518,6 +550,7 @@
 % ---------------------------------------------------------------------------
 
 % ---------------------------------------------------------------------------
+\begin{comment}
 \begin{frame}{Decisiones de diseño relevantes}
   \small
 %  \begin{block}{Recompensa relativa vs.\ absoluta}
@@ -547,6 +580,7 @@
     $\to$ max-visits es estadísticamente más robusta.
   \end{block}
 \end{frame}
+\end{comment}
 
 % ============================================================================
 \section{Resultados}
@@ -641,7 +675,7 @@
 
        \begin{block}{\small Señales de decisión MCTS}
         \small
-        Señales diferenciadas por intensidad: $\textcolor{mctsDkGreen}{\blacktriangle}$ COMPRAR100 \% vs.$\textcolor{mctsRed!90!black}{\blacktriangledown}$ VENDER 100\%..\\ 
+        Señales diferenciadas por intensidad: $\textcolor{mctsDkGreen}{\blacktriangle}$ COMPRAR 100 \% vs.$\textcolor{mctsRed!90!black}{\blacktriangledown}$ VENDER 100\%..\\ 
         La política binaria predomina $\leftrightarrow$ operaciones parciales son minoritarias.
       \end{block}
 \end{frame}
@@ -661,6 +695,7 @@
 \end{frame}
 % ---------------------------------------------------------------------------
 
+\begin{comment}
     \begin{frame}{Ventaja relativa sobre B\&H: Drawdown}
       \centering
       \includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{ind_drawdown.png}
@@ -676,6 +711,7 @@
         \end{itemize}
         \end{alertblock}
 \end{frame}
+\end{comment}
 
 % ---------------------------------------------------------------------------
 \begin{frame}{Convergencia UCB1}
@@ -797,20 +833,8 @@
     };
     \node[badge, fill=concUno] at ([xshift=-5.8cm]c1.center) {C1};
 
-    % --- C2 ---
-    \node[card, fill=concDos!7, draw=concDos!30, line width=0.8pt, below=0.35cm of c1] (c2) {%
-      \hspace{1.1cm}%
-      \parbox{11cm}{\small
-        \textbf{Resultado experimental}\\[3pt]
-        ROI $\approx+240\%$ vs.\ $+100\%$ B\&H
-        $\;\cdot\;$ drawdown $-10\%$ vs.\ $-75\%$
-        $\;\cdot\;$ Sharpe $1.56$ vs.\ $1.93$.
-      }
-    };
-    \node[badge, fill=concDos] at ([xshift=-5.8cm]c2.center) {C2};
-
     % --- C3 ---
-    \node[card, fill=concTres!7, draw=concTres!30, line width=0.8pt, below=0.35cm of c2] (c3) {%
+    \node[card, fill=concTres!7, draw=concTres!30, line width=0.8pt, below=0.35cm of c1] (c3) {%
       \hspace{1.1cm}%
       \parbox{11cm}{\small
         \textbf{Política emergente}\\[3pt]
@@ -819,7 +843,7 @@
         las posiciones intermedias no aportan ventaja sistemática.
       }
     };
-    \node[badge, fill=concTres] at ([xshift=-5.8cm]c3.center) {C3};
+    \node[badge, fill=concTres] at ([xshift=-5.8cm]c3.center) {C2};
   \end{tikzpicture}
 \end{frame}
 
